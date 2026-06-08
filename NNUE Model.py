@@ -11,16 +11,16 @@ class NNUE(nn.Module):
     def clipped_relu(self,x):
         return torch.clamp(x,min=0,max=1)
     def refresh_accumulator(self,active_features):
-        acc=self.input_bias.copy()
+        acc=self.input_bias.clone()
         for i in active_features:
-          acc+= self.input_weights[i]
+          acc=acc+self.input_weights[i]
         return acc
     def update_accumulator(self,accumulator,added_features,removed_features):
         acc=accumulator.copy()
         for i in added_features:
-          acc+=self.input_weights[i]
+          acc=acc+self.input_weights[i]
         for i in removed_features:
-          acc-=self.input_weights[i]
+          acc=acc-self.input_weights[i]
         return acc
     def forward(self,accumulator):
         x=self.clipped_relu(accumulator)
