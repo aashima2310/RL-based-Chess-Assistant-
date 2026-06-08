@@ -1,2 +1,7 @@
-pytorch
 python-chess
+torch
+numpy
+zstandard
+pickle5
+tqdm
+
