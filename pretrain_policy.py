@@ -2,14 +2,14 @@ import pickle, torch, torch.nn as nn, torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import chess, os
-from Feature_extractor import FeatureExtractor
+from Feature_extractor import HalfKPExtractor
 from policy import PolicyValueNet
 
 class LichessDataset(Dataset):
     def __init__(self, pkl_path):
         with open(pkl_path, "rb") as f:
             self.data = pickle.load(f)
-        self.extractor = FeatureExtractor()
+        self.extractor = HalfKPExtractor()
 
     def __len__(self):
         return len(self.data)
@@ -17,26 +17,31 @@ class LichessDataset(Dataset):
     def __getitem__(self, idx):
         fen, move_uci = self.data[idx]
         board = chess.Board(fen)
-        state = self.extractor.board_to_tensor(board)
+        
+        w_idx = self.extractor.get_halfkp_indices(board, chess.WHITE)
+        b_idx = self.extractor.get_halfkp_indices(board, chess.BLACK)
+        
+        
+        w_vec = self.extractor.indices_to_tensor(w_idx)
+        b_vec = self.extractor.indices_to_tensor(b_idx)
+        
         move = chess.Move.from_uci(move_uci)
         target = self.extractor.move_to_idx(move)
-        # Value is 0.0 for now; we rely on policy (move prediction)
-        return state, torch.tensor(target, dtype=torch.long), torch.tensor(0.0)
+        
+        return w_vec, b_vec, torch.tensor(target, dtype=torch.long)
 
 def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     os.makedirs("weights", exist_ok=True)
     
-    # Load data
     dataset = LichessDataset("lichess_data.pkl")
     loader = DataLoader(dataset, batch_size=512, shuffle=True, num_workers=2)
     
-    # Model & Opt
-    model = PolicyValueNet(n_res_blocks=10, channels=128).to(device)
+
+    model = PolicyValueNet().to(device) 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    p_criterion = nn.CrossEntropyLoss()
-    
-    # Resume Checkpoint if it exists
+    criterion = nn.CrossEntropyLoss()
+     
     start_epoch = 0
     if os.path.exists("weights/checkpoint.pth"):
         checkpoint = torch.load("weights/checkpoint.pth")
@@ -63,7 +68,6 @@ def train():
             running_loss += loss.item()
             pbar.set_postfix(loss=f"{running_loss/(i+1):.4f}")
             
-        # Save checkpoint
         torch.save({
             'epoch': epoch + 1,
             'model_state': model.state_dict(),
