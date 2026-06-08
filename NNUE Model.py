@@ -1,10 +1,10 @@
 import torch
-imprt torch.nn as nn
+import torch.nn as nn
 class NNUE(nn.Module):
-    def _init_(self,input_size=49152):
-      super()._init_()
+    def __init__(self,input_size=49152):
+      super().__init__()
       self.input_weights=nn.Parameter(torch.randn(input_size,512)*0.01)
-      self.input_bias=nn.Parameter(torch.zeros(input_size,512))
+      self.input_bias=nn.Parameter(torch.zeros(512))
       self.l2=nn.Linear(512,32)
       self.l3=nn.Linear(32,32)
       self.l4=nn.Linear(32,1)
