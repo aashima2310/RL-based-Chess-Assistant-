@@ -16,7 +16,7 @@ class NNUE(nn.Module):
           acc=acc+self.input_weights[i]
         return acc
     def update_accumulator(self,accumulator,added_features,removed_features):
-        acc=accumulator.copy()
+        acc=accumulator.clone()
         for i in added_features:
           acc=acc+self.input_weights[i]
         for i in removed_features:
