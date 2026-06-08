@@ -5,7 +5,7 @@ class NNUE(nn.Module):
       super().__init__()
       self.input_weights=nn.Parameter(torch.randn(input_size,512)*0.01)
       self.input_bias=nn.Parameter(torch.zeros(512))
-      self.l2=nn.Linear(512,32)
+      self.l2=nn.Linear(1024,32)
       self.l3=nn.Linear(32,32)
       self.l4=nn.Linear(32,1)
     def clipped_relu(self,x):
@@ -22,9 +22,11 @@ class NNUE(nn.Module):
         for i in removed_features:
           acc=acc-self.input_weights[i]
         return acc
-    def forward(self,accumulator):
-        x=self.clipped_relu(accumulator)
-        x=self.clipped_relu(self.l2(x))
-        x=self.clipped_relu(self.l3(x))
-        x=self.l4(x)
+    def forward(self, w_acc, b_acc):
+        x = torch.cat([w_acc, b_acc], dim=1)
+        
+        x = self.clipped_relu(x)
+        x = self.clipped_relu(self.l2(x))
+        x = self.clipped_relu(self.l3(x))
+        x = self.l4(x)
         return x
