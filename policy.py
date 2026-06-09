@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import os
 
 class ResBlock(nn.Module):
     def __init__(self, channels: int = 128):
@@ -63,11 +63,8 @@ class PolicyValueNet(nn.Module):
         return torch.cat([pieces, turn], dim=1)         
 
     def forward(self, x: torch.Tensor):
-        """
-        x       : (B, 769)
-        returns : policy_logits (B, 4096), value (B, 1)
-        """
-        spatial = self._flat_to_spatial(x)              # (B, 13, 8, 8)
+
+        spatial = self._flat_to_spatial(x)       
         trunk   = self.res_tower(self.input_conv(spatial))
         return self.policy_head(trunk), self.value_head(trunk)
 
@@ -75,7 +72,27 @@ class PolicyValueNet(nn.Module):
         self.eval()
         with torch.no_grad():
             logits, value = self.forward(x.unsqueeze(0))
-            logits[0][~legal_mask] = float('-inf')
+            logits[0][~legal_mask] = float('-inf')def save(self, path: str):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        torch.save({'state_dict': self.state_dict()}, path)
+        print(f"Policy network saved to {path}")
+
+    def save(self, path: str):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        torch.save({'state_dict': self.state_dict()}, path)
+        print(f"Policy network saved to {path}")
+
+
+    @classmethod
+    def load(cls, path: str) -> 'PolicyValueNet':
+        checkpoint = torch.load(path, map_location='cpu')
+        model = cls()
+        model.load_state_dict(checkpoint['state_dict'])
+        print(f"Policy network loaded from {path}")
+        return model
+
+    def count_params(self) -> int:
+        return sum(p.numel() for p in self.parameters())
             priors = F.softmax(logits[0], dim=0)
         return priors, value.item()
 
