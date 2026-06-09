@@ -5,15 +5,11 @@ from torch.utils.data import Dataset, DataLoader
 import pickle
 import chess
 import os
-import sys
-sys.path.append('..')
-
 from Feature_extractor import HalfKPExtractor
 from policy import PolicyValueNet
 
 
 class LichessDataset(Dataset):
-
     def __init__(self, data_path: str):
         print(f"Loading Lichess data from {data_path}...")
         with open(data_path, 'rb') as f:
@@ -37,11 +33,11 @@ class LichessDataset(Dataset):
 
 
 def pretrain_policy(
-    data_path: str = "data/lichess_data.pkl",
+    data_path: str = "lichess_data.pkl",
     epochs: int = 3,
     batch_size: int = 512,
     learning_rate: float = 0.001,
-    save_path: str = "weights/pretrained_policy.pth"
+    save_path: str = "pretrained_policy.pth"
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -51,12 +47,14 @@ def pretrain_policy(
         dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=2,
+        num_workers=4, 
         pin_memory=True if device.type == 'cuda' else False
     )
 
     model = PolicyValueNet(n_res_blocks=6, channels=128).to(device)
-    print(f"Policy parameters: {model.count_params():,}")
+    
+    if hasattr(model, 'count_params'):
+        print(f"Policy parameters: {model.count_params():,}")
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     policy_loss_fn = nn.CrossEntropyLoss()
@@ -77,7 +75,6 @@ def pretrain_policy(
             policy_logits, _ = model(features)
 
             loss = policy_loss_fn(policy_logits, targets)
-
 
             optimizer.zero_grad()
             loss.backward()
@@ -100,14 +97,12 @@ def pretrain_policy(
 
         epoch_loss = total_loss / num_batches
         epoch_acc  = correct / total * 100
-        print(f"Epoch {epoch+1} done | "
-              f"Loss: {epoch_loss:.4f} | "
-              f"Accuracy: {epoch_acc:.2f}%")
+        print(f"--- Epoch {epoch+1} done | Loss: {epoch_loss:.4f} | Accuracy: {epoch_acc:.2f}% ---")
 
         if epoch_loss < best_loss:
             best_loss = epoch_loss
-            model.save(save_path)
-            print(f"Best model saved. Loss: {best_loss:.4f}")
+            torch.save(model.state_dict(), save_path)
+            print(f"Best model saved securely to {save_path}. Loss: {best_loss:.4f}")
 
     print(f"Policy pretraining done. Best loss: {best_loss:.4f}")
     return model
