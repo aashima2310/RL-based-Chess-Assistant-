@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 def get_random_board():
     board = chess.Board()
-    for _ in range(random.randint(5,30)):
+    for _ in range(random.randint(6,12)):
         legal_moves = list(board.legal_moves)
         if not legal_moves:
             board = chess.Board()
@@ -14,7 +14,7 @@ def get_random_board():
         board.push(random.choice(legal_moves))
     return board
 
-def collect_data(target=500000, stockfish_path="/usr/games/stockfish", depth=12):
+def collect_data(target=500000, stockfish_path="/usr/games/stockfish", depth=10):
     data = []
     with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
         with tqdm(total=target, desc="Collecting positions") as pbar:
