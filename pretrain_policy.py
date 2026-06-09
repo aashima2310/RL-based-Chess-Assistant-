@@ -1,14 +1,24 @@
-import pickle, torch, torch.nn as nn, torch.optim as optim
+import torch
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
-import chess, os
+import pickle
+import chess
+import os
+import sys
+sys.path.append('..')
+
 from Feature_extractor import HalfKPExtractor
 from policy import PolicyValueNet
 
+
 class LichessDataset(Dataset):
-    def __init__(self, pkl_path):
-        with open(pkl_path, "rb") as f:
+
+    def __init__(self, data_path: str):
+        print(f"Loading Lichess data from {data_path}...")
+        with open(data_path, 'rb') as f:
             self.data = pickle.load(f)
+        print(f"Loaded {len(self.data)} positions.")
         self.extractor = HalfKPExtractor()
 
     def __len__(self):
@@ -17,66 +27,91 @@ class LichessDataset(Dataset):
     def __getitem__(self, idx):
         fen, move_uci = self.data[idx]
         board = chess.Board(fen)
-        
-        w_idx = self.extractor.get_halfkp_indices(board, chess.WHITE)
-        b_idx = self.extractor.get_halfkp_indices(board, chess.BLACK)
-        
-        
-        w_vec = self.extractor.indices_to_tensor(w_idx)
-        b_vec = self.extractor.indices_to_tensor(b_idx)
-        
+
+        features = self.extractor.board_to_tensor_769(board)
+
         move = chess.Move.from_uci(move_uci)
-        target = self.extractor.move_to_idx(move)
-        
-        return w_vec, b_vec, torch.tensor(target, dtype=torch.long)
+        move_idx = self.extractor.move_to_idx(move)
 
-def train():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    os.makedirs("weights", exist_ok=True)
-    
-    dataset = LichessDataset("lichess_data.pkl")
-    loader = DataLoader(dataset, batch_size=512, shuffle=True, num_workers=2)
-    
+        return features, torch.tensor(move_idx, dtype=torch.long)
 
-    model = PolicyValueNet().to(device) 
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    criterion = nn.CrossEntropyLoss()
-     
-    start_epoch = 0
-    if os.path.exists("weights/checkpoint.pth"):
-        checkpoint = torch.load("weights/checkpoint.pth")
-        model.load_state_dict(checkpoint['model_state'])
-        optimizer.load_state_dict(checkpoint['optim_state'])
-        start_epoch = checkpoint['epoch']
-        print(f"Resuming from epoch {start_epoch}")
 
-    # Training Loop
-    model.train()
-    for epoch in range(start_epoch, 3):
-        running_loss = 0.0
-        pbar = tqdm(loader, desc=f"Epoch {epoch+1}/3")
-        
-        for i, (states, targets, _) in enumerate(pbar):
-            states, targets = states.to(device), targets.to(device)
-            
+def pretrain_policy(
+    data_path: str = "data/lichess_data.pkl",
+    epochs: int = 3,
+    batch_size: int = 512,
+    learning_rate: float = 0.001,
+    save_path: str = "weights/pretrained_policy.pth"
+):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
+    dataset = LichessDataset(data_path)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True if device.type == 'cuda' else False
+    )
+
+    model = PolicyValueNet(n_res_blocks=6, channels=128).to(device)
+    print(f"Policy parameters: {model.count_params():,}")
+
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    policy_loss_fn = nn.CrossEntropyLoss()
+
+    best_loss = float('inf')
+
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0.0
+        correct = 0
+        total = 0
+        num_batches = 0
+
+        for batch_idx, (features, targets) in enumerate(dataloader):
+            features = features.to(device)
+            targets  = targets.to(device)
+
+            policy_logits, _ = model(features)
+
+            loss = policy_loss_fn(policy_logits, targets)
+
+
             optimizer.zero_grad()
-            logits, _ = model(states)
-            loss = p_criterion(logits, targets)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            
-            running_loss += loss.item()
-            pbar.set_postfix(loss=f"{running_loss/(i+1):.4f}")
-            
-        torch.save({
-            'epoch': epoch + 1,
-            'model_state': model.state_dict(),
-            'optim_state': optimizer.state_dict(),
-        }, "weights/checkpoint.pth")
-        print(f"Checkpoint saved.")
 
-    torch.save(model.state_dict(), "weights/pretrained_policy.pth")
-    print("Training finished.")
+            total_loss += loss.item()
+            num_batches += 1
+            predicted = policy_logits.argmax(dim=1)
+            correct += (predicted == targets).sum().item()
+            total += targets.size(0)
+
+            if batch_idx % 200 == 0:
+                avg_loss = total_loss / num_batches
+                accuracy = correct / total * 100
+                print(f"Epoch {epoch+1} | "
+                      f"Batch {batch_idx}/{len(dataloader)} | "
+                      f"Loss: {avg_loss:.4f} | "
+                      f"Accuracy: {accuracy:.2f}%")
+
+        epoch_loss = total_loss / num_batches
+        epoch_acc  = correct / total * 100
+        print(f"Epoch {epoch+1} done | "
+              f"Loss: {epoch_loss:.4f} | "
+              f"Accuracy: {epoch_acc:.2f}%")
+
+        if epoch_loss < best_loss:
+            best_loss = epoch_loss
+            model.save(save_path)
+            print(f"Best model saved. Loss: {best_loss:.4f}")
+
+    print(f"Policy pretraining done. Best loss: {best_loss:.4f}")
+    return model
+
 
 if __name__ == "__main__":
-    train()
+    pretrain_policy()
