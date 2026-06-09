@@ -18,7 +18,6 @@ def collect_lichess_data(pgn_file_path, target_positions=5000000, min_elo=1800):
                     text_stream = io.TextIOWrapper(reader, encoding='utf-8')
                     data = extract_positions(text_stream, target_positions, min_elo)
         else:
-            # Fallback for normal .pgn files
             with open(pgn_file_path, 'r', encoding='utf-8') as text_stream:
                 data = extract_positions(text_stream, target_positions, min_elo)
     except Exception as e:
@@ -26,6 +25,8 @@ def collect_lichess_data(pgn_file_path, target_positions=5000000, min_elo=1800):
         return
 
     print(f"Saving {len(data)} positions to lichess_data.pkl...")
+
+    os.makedirs("data", exist_ok=True)
     with open("lichess_data.pkl", 'wb') as out_f:
         pickle.dump(data, out_f)
     print("Done!")
