@@ -1,0 +1,8 @@
+chessrl_env/
+product/data/chessrl.db
+product/data/lichess_db_puzzle.csv
+product/data/puzzles.zst
+__pycache__/
+*.pyc
+.env
+chessrl.db
