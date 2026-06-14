@@ -1,10 +1,18 @@
 import chess
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
-
+import math
 class HalfKPExtractor:
 
     input_size = 40960
+    QUEEN_DIRS = [
+    (1, 0), (1, 1), (0, 1), (-1, 1),   
+    (-1, 0), (-1, -1), (0, -1), (1, -1) ]
+    KNIGHT_MOVES = [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]
+    UNDER_PROMO_PIECES = [chess.KNIGHT, chess.BISHOP, chess.ROOK]
+    UNDER_PROMO_DIRS   = [-1, 0, 1] 
 
     PIECE_TYPE_INDEX = {
         (chess.PAWN,   chess.WHITE): 0,
@@ -88,21 +96,90 @@ class HalfKPExtractor:
         return torch.tensor(vector, dtype=torch.float32)
 
     def get_legal_moves(self, board: chess.Board) -> torch.Tensor:
-        mask = torch.zeros(4096, dtype=torch.bool)
+        mask = torch.zeros(4672, dtype=torch.float32)
         for move in board.legal_moves:
-            mask[move.from_square * 64 + move.to_square] = True
+         if move.promotion is None:
+            piece = board.piece_at(move.from_square)
+            to_rank = chess.square_rank(move.to_square)
+            if piece and piece.piece_type == chess.PAWN and to_rank in (0, 7):
+                move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
+         try:
+            mask[self.move_to_idx(move)] = 1.0
+         except (ValueError, IndexError):
+            pass
         return mask
 
     def move_to_idx(self, move: chess.Move) -> int:
-        return move.from_square * 64 + move.to_square
+        
+      from_sq = move.from_square          # 0-63
+      from_rank = chess.square_rank(from_sq)
+      from_file = chess.square_file(from_sq)
+      to_sq   = move.to_square
+      to_rank = chess.square_rank(to_sq)
+      to_file = chess.square_file(to_sq)
 
-    def idx_to_move(self, idx: int) -> chess.Move:
-        return chess.Move(idx // 64, idx % 64)
+      dr = to_rank - from_rank
+      df = to_file - from_file
+      if move.promotion is not None and move.promotion != chess.QUEEN:
+        piece_idx = self.UNDER_PROMO_PIECES.index(move.promotion)   
+        dir_idx   = self.UNDER_PROMO_DIRS.index(df)
+        move_type = 64 + piece_idx * 3 + dir_idx
+        return from_sq * 73 + move_type
+      if (abs(dr), abs(df)) in [(2,1),(1,2)]:
+        knight_idx = self.KNIGHT_MOVES.index((dr, df))
+        return from_sq * 73 + 56 + knight_idx 
+      steps = max(abs(dr), abs(df))
+      unit_dr = dr // steps
+      unit_df = df // steps
+      dir_idx  = self.QUEEN_DIRS.index((unit_dr, unit_df))
+      dist_idx = steps - 1        
+      move_type = dir_idx * 7 + dist_idx
+      return from_sq * 73 + move_type 
+
+    def idx_to_move(self, idx: int,board: chess.Board=None) -> chess.Move:
+        from_sq    = idx // 73
+        move_type  = idx % 73
+
+        from_rank  = chess.square_rank(from_sq)
+        from_file  = chess.square_file(from_sq)
+
+    
+        if move_type >= 64:
+         offset     = move_type - 64
+         piece_idx  = offset // 3
+         dir_idx    = offset % 3
+         promotion  = self.UNDER_PROMO_PIECES[piece_idx]
+         df         = self.UNDER_PROMO_DIRS[dir_idx]
+        
+         dr         = 1 if from_rank == 6 else -1
+         to_sq      = chess.square(from_file + df, from_rank + dr)
+         return chess.Move(from_sq, to_sq, promotion=promotion)
+
+        if move_type >= 56:
+          dr, df    = self.KNIGHT_MOVES[move_type - 56]
+          to_sq     = chess.square(from_file + df, from_rank + dr)
+          return chess.Move(from_sq, to_sq)
+
+    
+        dir_idx   = move_type // 7
+        dist      = move_type % 7 + 1          # 1-7
+        dr, df    = self.QUEEN_DIRS[dir_idx]
+        to_sq     = chess.square(from_file + df * dist, from_rank + dr * dist)
+
+    
+        promotion = None
+        if board is not None:
+         piece = board.piece_at(from_sq)
+         to_rank = chess.square_rank(to_sq)
+         if piece and piece.piece_type == chess.PAWN and to_rank in (0, 7):
+            promotion = chess.QUEEN
+
+        return chess.Move(from_sq, to_sq, promotion=promotion)
 
     def move_to_policy_target(
         self, mcts_visit_counts: dict,board: chess.Board ) -> torch.Tensor:
         
-        policy = torch.zeros(4096, dtype=torch.float32)
+        policy = torch.zeros(4672, dtype=torch.float32)
         total_visits = sum(mcts_visit_counts.values())
 
         if total_visits == 0:
@@ -116,6 +193,3 @@ class HalfKPExtractor:
 
         return policy
 
-
-  
-    
