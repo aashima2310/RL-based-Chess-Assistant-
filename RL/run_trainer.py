@@ -29,9 +29,15 @@ def load_buffer_into_ram(replay_buffer):
 
 
 def main():
-    champion = CombinedNetwork()
+    import sys
+    sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
+    from RL.chess_env.features import HalfKPExtractor
+    from pretraining_nnue_code import NNUE   
+    nnue = NNUE(input_size=40960)
+    nnue.load_state_dict(torch.load('nnue.pth', map_location='cpu'))
+    
+    champion = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True)
     champion = load_checkpoint(champion, "checkpoint.pt")
-
     trainer = Trainer(champion)
   
     replay_buffer = ReplayBuffer(max_size=50000)
