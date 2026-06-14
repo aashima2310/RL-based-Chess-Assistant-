@@ -1,0 +1,116 @@
+pip install chess
+import numpy as np
+import math
+import chess
+NUM_SQUARES = 64
+NUM_PT = 10
+PSEnd=641
+
+PIECE_TO_INT = {
+    'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4,
+    'p': 5, 'n': 6, 'b': 7, 'r': 8, 'q': 9
+}
+
+def flip_sq(sq: int)-> int:
+  return sq^56
+def half_kp(king_sq: int, piece_type: int, piece_square: int)-> int:
+  return king_sq *PSEnd + piece_square * 10 + piece_type+1
+
+def active_features(board: chess.Board):
+
+    white_king_sq = board.king(chess.WHITE)
+    black_king_sq = board.king(chess.BLACK)
+
+    white_active_feats = []
+    black_active_feats = []
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece and piece.piece_type!=chess.KING:
+            piece_type_int = PIECE_TO_INT[piece.symbol()]
+            if white_king_sq is not None:
+                white_active_feats.append(half_kp(white_king_sq, piece_type_int, sq))
+            if black_king_sq is not None:
+                black_active_feats.append(half_kp(flip_sq(black_king_sq), piece_type_int, flip_sq(sq)))
+
+    return white_active_feats, black_active_feats
+def move_to_index(move: chess.Move) -> int:
+    from_sq = move.from_square  
+    to_sq = move.to_square      
+
+    
+    knight_diffs = {-17: 0, -15: 1, -10: 2, -6: 3, 6: 4, 10: 5, 15: 6, 17: 7}
+    diff = to_sq - from_sq
+    if diff in knight_diffs:
+        return from_sq * 73 + 56 + knight_diffs[diff]
+
+
+    if move.promotion and move.promotion != chess.QUEEN:
+        promo_map = {chess.KNIGHT: 0, chess.BISHOP: 1, chess.ROOK: 2}
+        file_diff = chess.square_file(to_sq) - chess.square_file(from_sq)
+        dir_index = file_diff + 1   
+        move_type = 64 + dir_index * 3 + promo_map[move.promotion]
+        return from_sq * 73 + move_type
+
+    
+    dr = chess.square_rank(to_sq) - chess.square_rank(from_sq)
+    df = chess.square_file(to_sq) - chess.square_file(from_sq)
+    steps = max(abs(dr), abs(df))
+    dr_norm = dr // steps
+    df_norm = df // steps
+    direction_map = {
+        (0,  1): 0,   
+        (1,  1): 1,   
+        (1,  0): 2,  
+        (1, -1): 3,   
+        (0, -1): 4,   
+        (-1,-1): 5,   
+        (-1, 0): 6,   
+        (-1, 1): 7,   
+    }
+    direction = direction_map[(dr_norm, df_norm)]
+    move_type = direction * 7 + (steps - 1)  
+    return from_sq * 73 + move_type
+
+
+def index_to_move(index: int, state: chess.Board) -> chess.Move:
+    from_sq = index // 73
+    move_type = index % 73
+
+    if 56 <= move_type <= 63:
+        knight_diffs = [-17, -15, -10, -6, 6, 10, 15, 17]
+        to_sq = from_sq + knight_diffs[move_type - 56]
+        return chess.Move(from_sq, to_sq)
+
+    if 64 <= move_type <= 72:
+        promo_pieces = [chess.KNIGHT, chess.BISHOP, chess.ROOK]
+        slot = move_type - 64
+        dir_index = slot // 3       
+        promo = promo_pieces[slot % 3]
+        file_diff = dir_index - 1    
+        from_file = chess.square_file(from_sq)
+        from_rank = chess.square_rank(from_sq)
+        to_sq = chess.square(from_file + file_diff, from_rank + 1)
+        return chess.Move(from_sq, to_sq, promotion=promo)
+    directions = [
+        (0,  1),   
+        (1,  1),   
+        (1,  0),   
+        (1, -1), 
+        (0, -1),   
+        (-1,-1),   
+        (-1, 0),   
+        (-1, 1), 
+    ]
+    direction = move_type // 7
+    steps = (move_type % 7) + 1
+    dr, df = directions[direction]
+    to_rank = chess.square_rank(from_sq) + dr * steps
+    to_file = chess.square_file(from_sq) + df * steps
+    to_sq = chess.square(to_file, to_rank)
+
+    piece = state.piece_at(from_sq)
+    if (piece and piece.piece_type == chess.PAWN and
+            chess.square_rank(to_sq) in (0, 7)):
+        return chess.Move(from_sq, to_sq, promotion=chess.QUEEN)
+
+    return chess.Move(from_sq, to_sq)
