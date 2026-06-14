@@ -1,5 +1,10 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from chess_env.features import move_to_index
+
 class NNUE_AlphaZero(nn.Module):
-    def __init__(self, pretrained_nnue: NNUE, num_moves=4672, freeze_backbone=True):
+    def __init__(self, pretrained_nnue, num_moves=4672, freeze_backbone=True):
         super().__init__()
         self.backbone = pretrained_nnue
         self.trunk = nn.Linear(32, 128)
@@ -14,7 +19,6 @@ class NNUE_AlphaZero(nn.Module):
             nn.Linear(64, 1),
             nn.Tanh()
         )
-
         if freeze_backbone:
             self._freeze_backbone()
 
@@ -26,23 +30,31 @@ class NNUE_AlphaZero(nn.Module):
         for param in self.backbone.parameters():
             param.requires_grad = True
         return [
-            {'params': self.backbone.parameters(),  'lr': 1e-4 * lr_scale},
-            {'params': self.trunk.parameters(),      'lr': 1e-4},
-            {'params': self.policy_head.parameters(),'lr': 1e-4},
-            {'params': self.value_head.parameters(), 'lr': 1e-4},
+            {'params': self.backbone.parameters(),   'lr': 1e-4 * lr_scale},
+            {'params': self.trunk.parameters(),       'lr': 1e-4},
+            {'params': self.policy_head.parameters(), 'lr': 1e-4},
+            {'params': self.value_head.parameters(),  'lr': 1e-4},
         ]
 
-    def forward(self, w_acc, b_acc, legal_move_mask=None):
+    def forward(self, w_acc, b_acc, board=None):
+        legal_move_mask = None
+        if board is not None:
+            legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=w_acc.device)
+            for move in board.legal_moves:
+                legal_move_mask[move_to_index(move)] = True
+            if w_acc.dim() == 2:
+                legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
+
         w_processed = torch.matmul(w_acc, self.backbone.input_weights) + self.backbone.input_bias
         b_processed = torch.matmul(b_acc, self.backbone.input_weights) + self.backbone.input_bias
-        x = torch.cat([w_processed, b_processed], dim=1)         
+        x = torch.cat([w_processed, b_processed], dim=1)
         x = self.backbone.clipped_relu(x)
-        x = self.backbone.clipped_relu(self.backbone.l2(x))  
-        x = self.backbone.clipped_relu(self.backbone.l3(x)) 
+        x = self.backbone.clipped_relu(self.backbone.l2(x))
+        x = self.backbone.clipped_relu(self.backbone.l3(x))
 
-        trunk = F.relu(self.trunk(x))                  
+        trunk = F.relu(self.trunk(x))
 
-        policy_logits = self.policy_head(trunk)         
+        policy_logits = self.policy_head(trunk)
         if legal_move_mask is not None:
             policy_logits = policy_logits.masked_fill(~legal_move_mask, -1e9)
         policy = F.softmax(policy_logits, dim=-1)
@@ -56,41 +68,10 @@ class NNUE_AlphaZero(nn.Module):
 
     def update_accumulator(self, accumulator, added, removed):
         return self.backbone.update_accumulator(accumulator, added, removed)
-nnue = NNUE(input_size=40960)
-nnue.load_state_dict(torch.load('your_nnue.pt'))
-model = NNUE_AlphaZero(nnue, num_moves=4672, freeze_backbone=True)
-def alphazero_loss(policy_pred, value_pred, policy_target, value_target, l2_lambda=1e-4):
-   policy_loss = -(policy_target * torch.log(policy_pred + 1e-8)).sum(dim=-1).mean()
-   value_loss = F.mse_loss(value_pred.squeeze(-1), value_target.squeeze(-1))
-   l2_loss= sum(p.pow(2).sum() for p in model.parameters() if p.requires_grad)
-   return policy_loss + value_loss+l2_lambda*l2_loss
 
 
-model = NNUE_AlphaZero(nnue, num_moves=4672, freeze_backbone=True)
-optimizer = torch.optim.Adam(
-    filter(lambda p: p.requires_grad, model.parameters()),
-    lr=1e-3
-)
-phase1_steps=10000
-phase2_steps=10000
-for step in range(phase1_steps):
-    policy, value = model(w_acc, b_acc, legal_move_mask)                  # these must come from your self-play / replay buffer, e.g.:
-                                                                          # w_acc, b_acc         → halfkp_extractor.board_to_halfkp(board)
-                                                                          # target_policy        → mcts visit count distribution (4672,)
-                                                                          # target_value         → game outcome +1/0/-1
-                                                                          # legal_move_mask      → halfkp_extractor.get_legal_moves(board)
-    loss = alphazero_loss(policy, value, target_policy, target_value)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-
-param_groups = model.unfreeze_backbone(lr_scale=0.1)
-optimizer = torch.optim.Adam(param_groups) 
-
-for step in range(phase2_steps):
-    policy, value = model(w_acc, b_acc, legal_move_mask)
-    loss = alphazero_loss(policy, value, target_policy, target_value)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+def alphazero_loss(policy_pred, value_pred, policy_target, value_target, model, l2_lambda=1e-4):
+    policy_loss = -(policy_target * torch.log(policy_pred + 1e-8)).sum(dim=-1).mean()
+    value_loss = F.mse_loss(value_pred.squeeze(-1), value_target.squeeze(-1))
+    l2_loss = sum(p.pow(2).sum() for p in model.parameters() if p.requires_grad)
+    return policy_loss + value_loss + l2_lambda * l2_loss
