@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chess_env.features import move_to_index
+from chess_env.features import HalfKPExtractor
+halfkp_extractor = HalfKPExtractor()
+
 
 class NNUE_AlphaZero(nn.Module):
     def __init__(self, pretrained_nnue, num_moves=4672, freeze_backbone=True):
