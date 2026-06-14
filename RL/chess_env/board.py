@@ -57,7 +57,7 @@ class Chess_game:
     return -value
   def change_perspective(self,state):
     return state.mirror()
-chess_board=Chess_game()
+chess_board=chess.board()
 player="WHITE"
 arg={'C': cpuct,"num_searches": 1000} 
 
