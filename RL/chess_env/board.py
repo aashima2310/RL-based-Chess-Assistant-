@@ -1,3 +1,6 @@
+import numpy as np
+import math
+import chess
 class Chess_game:
   def __init__(self):
    self.row_count=8
