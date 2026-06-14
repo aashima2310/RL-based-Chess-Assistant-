@@ -1,6 +1,23 @@
 import numpy as np
 import math
 import chess
+def active_features(board: chess.Board):
+
+    white_king_sq = board.king(chess.WHITE)
+    black_king_sq = board.king(chess.BLACK)
+
+    white_active_feats = []
+    black_active_feats = []
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece and piece.piece_type!=chess.KING:
+            piece_type_int = PIECE_TO_INT[piece.symbol()]
+            if white_king_sq is not None:
+                white_active_feats.append(half_kp(white_king_sq, piece_type_int, sq))
+            if black_king_sq is not None:
+                black_active_feats.append(half_kp(flip_sq(black_king_sq), piece_type_int, flip_sq(sq)))
+
+    return white_active_feats, black_active_feats
 class Chess_game:
   def __init__(self):
    self.row_count=8
