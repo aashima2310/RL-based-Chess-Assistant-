@@ -57,4 +57,58 @@ class Chess_game:
     return -value
   def change_perspective(self,state):
     return state.mirror()
+chess_board=Chess_game()
+player="WHITE"
+arg={'C': cpuct,"num_searches": 1000} 
 
+
+model = ChessNet(chess_board.action_size)
+
+mcts=MCTS(chess_board, arg, model)
+state=chess_board.get_initial_state()
+
+while True:
+  print(state)
+  valid = chess_board.get_valid_moves(state)
+
+  if player == "WHITE":
+   uci = input(f"Enter move for {player} (e.g. e2e4): ")
+   try:
+            move = chess.Move.from_uci(uci)
+            action = halfkp_extractor.move_to_idx(move)
+   except ValueError:
+            print("Invalid UCI format, try again")
+            continue
+
+   if valid[action] == 0:
+            print("Illegal move, try again")
+            continue
+  else:
+    
+    mcts_probs = mcts.search(state) 
+    action = np.argmax(mcts_probs)
+
+    move_obj = halfkp_extractor.idx_to_move(action)
+    print(f"MCTS chose move: {move_obj.uci()}")
+
+    if valid[action] == 0:
+            print("MCTS chose illegal move, picking random legal move")
+            legal_moves_indices = np.where(valid == 1)[0]
+            if len(legal_moves_indices) > 0:
+                action = np.random.choice(legal_moves_indices)
+            else:
+                print("No legal moves available, game should be terminated.")
+                break
+
+  state=chess_board.get_next_state(state,action)
+  value, terminate=chess_board.get_value_and_terminated(state,action)
+
+  if terminate:
+    print(state)
+    if value==1:
+        print(f"Game ended, player {player} won")
+    elif value==0:
+        print("Game ended in draw")
+    break
+
+  player=chess_board.get_opponent(player)
