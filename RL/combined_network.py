@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chess_env.features import HalfKPExtractor
+import sys
+sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
+from RL.chess_env.features import HalfKPExtractor
+
 halfkp_extractor = HalfKPExtractor()
 
 
@@ -43,7 +46,7 @@ class NNUE_AlphaZero(nn.Module):
         if board is not None:
             legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=w_acc.device)
             for move in board.legal_moves:
-                legal_move_mask[move_to_index(move)] = True
+                legal_move_mask[halfkp_extractor.move_to_idx(move)] = True
             if w_acc.dim() == 2:
                 legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
 
