@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-# ?? from chess_env.features import board_to_tensor_769
+from chess_env.features import board_to_tensor_769
 from config import Config
 
 
