@@ -192,4 +192,4 @@ class HalfKPExtractor:
                 policy[self.move_to_idx(move)] = count / total_visits
 
         return policy
-
+halfkp_extractor = HalfKPExtractor()
