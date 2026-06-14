@@ -5,7 +5,7 @@ import torch
 from RL_training.trainer import Trainer
 from RL_training.replay_buffer import ReplayBuffer
 from RL_training.champion import evaluate
-from RL.combined_network import CombinedNetwork
+from RL.combined_network import NNUE_AlphaZero as CombinedNetwork
 from RL.checkpoints import save_checkpoint, load_checkpoint
 from RL.training_stats import log
 from RL.config import Config
