@@ -74,9 +74,6 @@ def load_buffer_into_ram(replay_buffer):
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, (tuple, list)) and len(item) == 3:
-                        state, policy, value = item
-                        if hasattr(state, 'fen'):
-                            state = board_to_tensor(state)
                         all_data.append(item)
                         new_tuples_added += 1
             else:
