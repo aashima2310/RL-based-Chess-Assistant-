@@ -44,7 +44,7 @@ def load_buffer_into_ram(replay_buffer):
     try:
         os.system(f'wget --quiet --no-check-certificate "https://drive.google.com/uc?export=download&id=1giUl9hh2vxLxSthdqp-tqRnxFmSl1utp" -O {LOCAL_DOWNLOAD_DIR}/buffer_nnue_temp.pkl')
         import subprocess
-        subprocess.run(f'curl -L -s "https://drive.google.com/drive/folders/{FOLDER_ID}" | grep -o "buffer_[a-zA-Z0-9_]*\.pkl"', shell=True)
+        subprocess.run(f'curl -L -s "https://drive.google.com/drive/folders/{FOLDER_ID}" | grep -o r"buffer_[a-zA-Z0-9_]*\.pkl"', shell=True)
     except Exception as e:
         print(f"Error downloading from Google Drive: {e}")
         return len(replay_buffer.buffer)
@@ -105,7 +105,7 @@ def main():
     print(f"Using device: {device}")
 
     nnue = NNUE(input_size=40960)
-    nnue.load_state_dict(torch.load(NNUE_PATH, map_location=device))
+    nnue.load_state_dict(torch.load(NNUE_PATH, map_location=device,weights_only=False))
     nnue.eval()
     print("Pretrained NNUE loaded!")
 
