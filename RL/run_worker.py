@@ -3,13 +3,15 @@ import pickle
 import os
 import torch
 from RL.RL_training.self_play import run_self_play
-from combined_network import CombinedNetwork   
-from checkpoints import load_checkpoint
-from config import Config
+from RL.combined_network import NNUE_AlphaZero as CombinedNetwork
+from RL.checkpoints import load_checkpoint
+from RL.config import Config
+from pretraining_nnue_code import NNUE
+import sys
+sys.path.append('/content/RL-based-Chess-Assistant-')
 
 checkpoint_poll_seconds = 120
-buffer = "buffer.pkl"
-
+buffer = "/content/RL-based-Chess-Assistant-/buffer.pkl"
 def load_buffer():
     if os.path.exists(buffer):
         with open(buffer, 'rb') as f:
@@ -29,8 +31,14 @@ def save_buffer(data):
 
 
 def main():
-    
-    network = CombinedNetwork()
+    from google.colab import drive
+    drive.mount('/content/drive')
+
+    nnue = NNUE(input_size=40960)
+    nnue.load_state_dict(torch.load('/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth', map_location='cpu'))
+    nnue.eval()
+    print("Pretrained NNUE loaded!")
+    network = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True) 
     network.eval()
    
     iteration = 0
