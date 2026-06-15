@@ -87,4 +87,4 @@ for episode in range(Config.num_episodes):
     gc.collect()                        
     torch.cuda.empty_cache()             
 
-    return all_data
+return all_data
