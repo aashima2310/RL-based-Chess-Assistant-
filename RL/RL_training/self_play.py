@@ -1,6 +1,7 @@
 import numpy as np
 import chess
 import sys
+import torch
 sys.path.append('/content/RL-based-Chess-Assistant-')
 
 from RL.chess_env.board import Chess_game
