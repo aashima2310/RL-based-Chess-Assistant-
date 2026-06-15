@@ -36,20 +36,23 @@ def clean_old_checkpoints(workspace_path, keep_latest=3):
                 print(f"Warning: Could not delete {file_path}: {e}")
 
 def load_buffer_into_ram(replay_buffer):
+    processed_files.clear()
     if os.path.exists(LOCAL_DOWNLOAD_DIR):
         shutil.rmtree(LOCAL_DOWNLOAD_DIR)
     os.makedirs(LOCAL_DOWNLOAD_DIR, exist_ok=True)
 
     print("🔄 Downloading latest worker buffers from Google Drive Folder via gdown...")
     try:
-        os.system(f'wget --quiet --no-check-certificate "https://drive.google.com/uc?export=download&id=1giUl9hh2vxLxSthdqp-tqRnxFmSl1utp" -O {LOCAL_DOWNLOAD_DIR}/buffer_nnue_temp.pkl')
-        import subprocess
-        subprocess.run(f'curl -L -s "https://drive.google.com/drive/folders/{FOLDER_ID}" | grep -o "buffer_[a-zA-Z0-9_]*\\\\.pkl"', shell=True)
+        gdown.download_folder(
+            id=FOLDER_ID,
+            output=LOCAL_DOWNLOAD_DIR,
+            quiet=False,
+            use_cookies=False
+        )
     except Exception as e:
         print(f"Error downloading from Google Drive: {e}")
         return len(replay_buffer.buffer)
 
-    # Scan the freshly downloaded directory for worker files
     buffer_files = glob.glob(os.path.join(LOCAL_DOWNLOAD_DIR, 'buffer_*.pkl'))
 
     if not buffer_files:
@@ -57,48 +60,35 @@ def load_buffer_into_ram(replay_buffer):
         return len(replay_buffer.buffer)
 
     new_tuples_added = 0
-    all_data=[]
-    
+    all_data = []
+
     for path in buffer_files:
         file_name = os.path.basename(path)
-        
-        # FIX: Avoid training on the exact same data multiple times
         if file_name in processed_files:
             continue
-            
         try:
             with open(path, 'rb') as f:
                 data = pickle.load(f)
-            
-            # Unpack and push valid data tuples into memory
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, (tuple, list)) and len(item) == 3:
                         all_data.append(item)
                         new_tuples_added += 1
-            else:
-                if isinstance(data, (tuple, list)) and len(data) == 3:
-                    all_data.append(item)
-                    new_tuples_added += 1
-                    
             processed_files.add(file_name)
-            print(f" Processed unique data from new file: {file_name}")
-            
+            print(f"✅ Loaded {file_name}: {len(data)} tuples")
         except Exception as e:
             print(f"Skipping corrupt file {file_name}: {e}")
             continue
 
-    print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)} (Added {new_tuples_added} fresh tuples)")
     for tuple_item in all_data:
         try:
             replay_buffer.push(tuple_item)
         except TypeError:
-            if len(tuple_item) == 3:
-                replay_buffer.push(tuple_item[0], tuple_item[1], tuple_item[2])
-    print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)}")
+            replay_buffer.push(tuple_item[0], tuple_item[1], tuple_item[2])
+
+    print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)} (Added {new_tuples_added} fresh tuples)")
     shutil.rmtree(LOCAL_DOWNLOAD_DIR)
     return len(replay_buffer.buffer)
-
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
