@@ -10,20 +10,8 @@ from RL.config import Config
 from pretraining_nnue_code import NNUE
 import sys
 sys.path.append('/content/RL-based-Chess-Assistant-')
-import traceback
 
-# monkey patch chess.Board.push to catch the crash
-original_push = chess.Board.push
-def safe_push(self, move):
-    try:
-        return original_push(self, move)
-    except AssertionError as e:
-        print(f"CRASH in push!")
-        print(f"Move: {move}")
-        print(f"Board: {self.fen()}")
-        traceback.print_stack()
-        raise
-chess.Board.push = safe_push
+
 checkpoint_poll_seconds = 120
 buffer = "/content/RL-based-Chess-Assistant-/buffer.pkl"
 def load_buffer():
