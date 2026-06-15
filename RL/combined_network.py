@@ -45,6 +45,10 @@ class NNUE_AlphaZero(nn.Module):
 
     def forward(self, w_acc, b_acc, board=None):
         device = w_acc.device
+        self.backbone.to(device)
+        self.trunk.to(device)
+        self.policy_head.to(device)
+        self.value_head.to(device)
         legal_move_mask = None
         if board is not None:
             legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=device)
