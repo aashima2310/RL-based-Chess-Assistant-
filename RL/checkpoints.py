@@ -1,6 +1,6 @@
 import torch
 import os
-from config import Config
+from RL.config import Config
 
 def save_checkpoint(network, filename="checkpoint.pt"):
     os.makedirs(Config.checkpoint_dir, exist_ok=True)
