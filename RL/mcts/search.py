@@ -29,8 +29,6 @@ class MCTS:
      root.visit_count = 0
     
      if root.policy is None:
-         
-         device = self.args.get('device', torch.device('cpu'))
          w_acc, b_acc = halfkp_extractor.board_to_halfkp(state)
          w_acc = w_acc.to(device)
          b_acc = b_acc.to(device)
@@ -77,7 +75,6 @@ class MCTS:
 
         if not is_terminal:
             w_acc, b_acc = halfkp_extractor.board_to_halfkp(node.state)
-            device = next(self.model.parameters()).device  # or self.args.get('device', torch.device('cpu'))
             w_acc = w_acc.to(device)
             b_acc = b_acc.to(device)
             with torch.no_grad():
