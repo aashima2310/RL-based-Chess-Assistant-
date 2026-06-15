@@ -136,45 +136,55 @@ class HalfKPExtractor:
       move_type = dir_idx * 7 + dist_idx
       return from_sq * 73 + move_type 
 
-    def idx_to_move(self, idx: int,board: chess.Board=None) -> chess.Move:
-        from_sq    = idx // 73
-        move_type  = idx % 73
+    def idx_to_move(self, idx: int, board: chess.Board = None) -> chess.Move:
+     from_sq = idx // 73
+     move_type = idx % 73
+     from_rank = chess.square_rank(from_sq)
+     from_file = chess.square_file(from_sq)
 
-        from_rank  = chess.square_rank(from_sq)
-        from_file  = chess.square_file(from_sq)
+     if move_type >= 64:
+        offset = move_type - 64
+        piece_idx = offset // 3
+        dir_idx = offset % 3
+        promotion = self.UNDER_PROMO_PIECES[piece_idx]
+        df = self.UNDER_PROMO_DIRS[dir_idx]
+        dr = 1 if from_rank == 6 else -1
+        to_file = from_file + df
+        to_rank = from_rank + dr
+        # bounds check
+        if not (0 <= to_file <= 7 and 0 <= to_rank <= 7):
+            return chess.Move.null()
+        to_sq = chess.square(to_file, to_rank)
+        return chess.Move(from_sq, to_sq, promotion=promotion)
 
-    
-        if move_type >= 64:
-         offset     = move_type - 64
-         piece_idx  = offset // 3
-         dir_idx    = offset % 3
-         promotion  = self.UNDER_PROMO_PIECES[piece_idx]
-         df         = self.UNDER_PROMO_DIRS[dir_idx]
-        
-         dr         = 1 if from_rank == 6 else -1
-         to_sq      = chess.square(from_file + df, from_rank + dr)
-         return chess.Move(from_sq, to_sq, promotion=promotion)
+     if move_type >= 56:
+        dr, df = self.KNIGHT_MOVES[move_type - 56]
+        to_file = from_file + df
+        to_rank = from_rank + dr
+        # bounds check
+        if not (0 <= to_file <= 7 and 0 <= to_rank <= 7):
+            return chess.Move.null()
+        to_sq = chess.square(to_file, to_rank)
+        return chess.Move(from_sq, to_sq)
 
-        if move_type >= 56:
-          dr, df    = self.KNIGHT_MOVES[move_type - 56]
-          to_sq     = chess.square(from_file + df, from_rank + dr)
-          return chess.Move(from_sq, to_sq)
+     dir_idx = move_type // 7
+     dist = move_type % 7 + 1
+     dr, df = self.QUEEN_DIRS[dir_idx]
+     to_file = from_file + df * dist
+     to_rank = from_rank + dr * dist
+    # bounds check
+     if not (0 <= to_file <= 7 and 0 <= to_rank <= 7):
+        return chess.Move.null()
+     to_sq = chess.square(to_file, to_rank)
 
-    
-        dir_idx   = move_type // 7
-        dist      = move_type % 7 + 1          # 1-7
-        dr, df    = self.QUEEN_DIRS[dir_idx]
-        to_sq     = chess.square(from_file + df * dist, from_rank + dr * dist)
-
-    
-        promotion = None
-        if board is not None:
-         piece = board.piece_at(from_sq)
-         to_rank = chess.square_rank(to_sq)
-         if piece and piece.piece_type == chess.PAWN and to_rank in (0, 7):
+     promotion = None
+     if board is not None:
+        piece = board.piece_at(from_sq)
+        to_rank_val = chess.square_rank(to_sq)
+        if piece and piece.piece_type == chess.PAWN and to_rank_val in (0, 7):
             promotion = chess.QUEEN
 
-        return chess.Move(from_sq, to_sq, promotion=promotion)
+     return chess.Move(from_sq, to_sq, promotion=promotion)
 
     def move_to_policy_target(
         self, mcts_visit_counts: dict,board: chess.Board ) -> torch.Tensor:
