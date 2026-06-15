@@ -20,16 +20,19 @@ def load_buffer():
             return pickle.load(f)
     return []
 
-
+import fcntl 
 def save_buffer(data):
     existing = load_buffer()
     existing.extend(data)
-
     if len(existing) > 50000:
         existing = existing[-50000:]
-
-    with open(buffer, 'wb') as f:
+    
+    tmp_path = buffer + ".tmp"
+    with open(tmp_path, 'wb') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)  
         pickle.dump(existing, f)
+        fcntl.flock(f, fcntl.LOCK_UN)
+    os.replace(tmp_path, buffer)
 
 
 def main():
