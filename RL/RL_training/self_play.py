@@ -1,8 +1,10 @@
 import numpy as np
-from chess_env.board import Chess_game
-from mcts.search import MCTS
-from config import Config
-from chess_env import features
+from RL.chess_env.board import Chess_game
+from RL.mcts.search import MCTS
+from RL.config import Config
+from RL.chess_env import features
+import sys
+sys.path.append('/content/RL-based-Chess-Assistant-')
 
 def play_one_game(game, mcts, network):
 
@@ -11,7 +13,7 @@ def play_one_game(game, mcts, network):
     player = 1
 
     while True:
-        neutral_state = game.change_perspective(state) if player == -1 else state
+        neutral_state = game.change_perspective(state) if player == -1 else state.copy()
         action_probs = mcts.search(neutral_state)
 
         training_data.append((state.copy(), action_probs, player))
@@ -56,7 +58,7 @@ def run_self_play(network, iteration=0):
         'num_searches': sims
     }
 
-    mcts = MCTS(game, args)
+    mcts = MCTS(game, args,network)
     all_data = []
 
     for episode in range(Config.num_episodes):
