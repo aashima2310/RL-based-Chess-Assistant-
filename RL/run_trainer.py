@@ -46,7 +46,7 @@ def load_buffer_into_ram(replay_buffer):
     try:
         # Downloads the entire folder's contents into Lightning Studio
         gdown.download_folder(f'https://drive.google.com/drive/folders/{FOLDER_ID}', 
-                              output=LOCAL_DOWNLOAD_DIR, quiet=True, remaining_ok=True)
+                              output=LOCAL_DOWNLOAD_DIR, quiet=True)
     except Exception as e:
         print(f"Error downloading from Google Drive: {e}")
         return 0
