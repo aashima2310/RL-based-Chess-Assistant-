@@ -58,8 +58,12 @@ def main():
         is_better = evaluate(champion, challenger)
 
         if is_better:
+            ckpt_name = f"checkpoint_iter_{iteration}.pt"
             save_checkpoint(champion, "checkpoint.pt")
             print("Champion updated and saved")
+            os.system(f'git add {ckpt_name}')
+            os.system(f'git commit -m "checkpoint iteration {iteration}"')
+            os.system('git push')
         else:
             print("Champion unchanged")
 
