@@ -76,12 +76,15 @@ def run_self_play(network, iteration=0, args=None):
         'device': device
     }
 
-    mcts = MCTS(game, args, network)
-    all_data = []
+import gc
 
-    for episode in range(Config.num_episodes):
-        print(f"Episode {episode + 1}/{Config.num_episodes}")
-        game_data = play_one_game(game, mcts, network)
-        all_data.extend(game_data)
+for episode in range(Config.num_episodes):
+    print(f"Episode {episode + 1}/{Config.num_episodes}")
+    mcts = MCTS(game, args, network)      
+    game_data = play_one_game(game, mcts, network)
+    all_data.extend(game_data)
+    del mcts                            
+    gc.collect()                        
+    torch.cuda.empty_cache()             
 
     return all_data
