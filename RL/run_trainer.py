@@ -3,7 +3,7 @@ import os
 import time
 import sys
 import torch
-sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
+sys.path.append('/teamspace/studios/this_studio/drive/MyDrive/chess_rl/buffer_*.pkl')
 from RL.RL_training.trainer import Trainer
 from RL.RL_training.replay_buffer import ReplayBuffer
 from RL.RL_training.champion import evaluate
@@ -13,38 +13,36 @@ from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
 
-# In run_trainer.py, change load_buffer_into_ram to download from Drive
 import gdown
 
-BUFFER_DRIVE_ID = None  # will be set after first worker run
-
 def load_buffer_into_ram(replay_buffer):
-    if BUFFER_DRIVE_ID is None:
-        print("Buffer Drive ID not set yet, waiting...")
+    import glob
+    buffer_files = glob.glob(
+        '/teamspace/studios/this_studio/RL-based-Chess-Assistant-/drive/MyDrive/chess_rl/buffer_*.pkl'
+    )
+    
+    if not buffer_files:
+        print("No buffer files found, waiting for workers...")
         return 0
     
-    gdown.download(f'https://drive.google.com/uc?id={BUFFER_DRIVE_ID}', 
-                   'buffer.pkl', quiet=True)
+    all_data = []
+    for path in buffer_files:
+        with open(path, 'rb') as f:
+            data = pickle.load(f)
+        all_data.extend(data)
+        print(f"Loaded {len(data)} tuples from {os.path.basename(path)}")
     
-    if not os.path.exists('buffer.pkl'):
-        print("Buffer not found yet, waiting for workers...")
-        return 0
-    
-    with open('buffer.pkl', 'rb') as f:
-        data = pickle.load(f)
+    print(f"TOTAL: {len(all_data)} tuples from {len(buffer_files)} workers")
     replay_buffer.buffer.clear()
-    replay_buffer.push(data)
-    print(f"Loaded {len(data)} tuples from Drive")
-    return len(data)
+    replay_buffer.push(all_data)
+    return len(all_data)
 
 def main():
-    # load pretrained NNUE backbone
     nnue = NNUE(input_size=40960)
     nnue.load_state_dict(torch.load('/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth', map_location='cpu'))
     nnue.eval()
     print("Pretrained NNUE loaded!")
 
-    # wrap in AlphaZero model
     champion = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True)
     champion = load_checkpoint(champion, "checkpoint.pt")
 
@@ -71,7 +69,9 @@ def main():
         if is_better:
             ckpt_name = f"checkpoint_iter_{iteration}.pt"
             save_checkpoint(champion, "checkpoint.pt")
+            save_checkpoint(champion, "/teamspace/studios/this_studio/drive/MyDrive/chess_rl/checkpoint.pt")
             print("Champion updated and saved")
+            
             os.system(f'git add {ckpt_name}')
             os.system(f'git commit -m "checkpoint iteration {iteration}"')
             os.system('git push')
