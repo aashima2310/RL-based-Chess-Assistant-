@@ -1,13 +1,15 @@
 import numpy as np
+import chess
+import sys
+sys.path.append('/content/RL-based-Chess-Assistant-')
+
 from RL.chess_env.board import Chess_game
 from RL.mcts.search import MCTS
 from RL.config import Config
-from RL.chess_env import features
-import sys
-sys.path.append('/content/RL-based-Chess-Assistant-')
-import chess
-from RL.chess_env.features import HalfKPExtractor
+from RL.chess_env.features import HalfKPExtractor, move_to_index, index_to_move
+
 halfkp_extractor = HalfKPExtractor()
+
 
 def play_one_game(game, mcts, network):
     state = game.get_initial_state()
@@ -15,12 +17,11 @@ def play_one_game(game, mcts, network):
     player = 1
 
     while True:
-        # always pass canonical state to MCTS (white perspective)
         if player == -1:
             canonical_state = game.change_perspective(state)
         else:
             canonical_state = state.copy()
-            
+
         action_probs = mcts.search(canonical_state)
         training_data.append((state.copy(), action_probs, player))
 
@@ -31,14 +32,13 @@ def play_one_game(game, mcts, network):
             action = np.argmax(action_probs)
 
         if player == -1:
-            # mirror action back to original perspective
-            canonical_move = halfkp_extractor.idx_to_move(action, canonical_state)
+            canonical_move = index_to_move(action, canonical_state)
             original_move = chess.Move(
                 chess.square_mirror(canonical_move.from_square),
                 chess.square_mirror(canonical_move.to_square),
                 promotion=canonical_move.promotion
             )
-            action = halfkp_extractor.move_to_idx(original_move)
+            action = move_to_index(original_move)
 
         state = game.get_next_state(state, action)
         value, is_terminal = game.get_value_and_terminated(state, action)
@@ -57,8 +57,8 @@ def play_one_game(game, mcts, network):
 
         player = game.get_opponent(player)
 
-def run_self_play(network, iteration=0, args=None):
 
+def run_self_play(network, iteration=0):
     game = Chess_game()
     device = next(network.parameters()).device
 
@@ -67,17 +67,16 @@ def run_self_play(network, iteration=0, args=None):
         if iteration >= threshold:
             sims = count
 
-    if args is None:
-        args = {
-    'C': Config.c_puct,
-    'num_searches': sims,
-    'add_noise': True,
-    'dirichlet_alpha': 0.3,
-    'dirichlet_epsilon': 0.25,
-    'device': device
-}
+    args = {
+        'C': Config.c_puct,
+        'num_searches': sims,
+        'add_noise': True,
+        'dirichlet_alpha': 0.3,
+        'dirichlet_epsilon': 0.25,
+        'device': device
+    }
 
-    mcts = MCTS(game, args,network)
+    mcts = MCTS(game, args, network)
     all_data = []
 
     for episode in range(Config.num_episodes):
