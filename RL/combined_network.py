@@ -42,6 +42,7 @@ class NNUE_AlphaZero(nn.Module):
         ]
 
     def forward(self, w_acc, b_acc, board=None):
+        device = w_acc.device
         legal_move_mask = None
         if board is not None:
             legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=w_acc.device)
@@ -49,6 +50,8 @@ class NNUE_AlphaZero(nn.Module):
                 legal_move_mask[halfkp_extractor.move_to_idx(move)] = True
             if w_acc.dim() == 2:
                 legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
+        input_weights = self.backbone.input_weights.to(device)
+        input_bias = self.backbone.input_bias.to(device)
 
         w_processed = torch.matmul(w_acc, self.backbone.input_weights) + self.backbone.input_bias
         b_processed = torch.matmul(b_acc, self.backbone.input_weights) + self.backbone.input_bias
