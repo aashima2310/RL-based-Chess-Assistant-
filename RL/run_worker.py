@@ -10,7 +10,8 @@ from RL.config import Config
 from pretraining_nnue_code import NNUE
 import sys
 sys.path.append('/content/RL-based-Chess-Assistant-')
-
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 
 checkpoint_poll_seconds = 120
 buffer = "/content/drive/MyDrive/chess_rl/buffer.pkl"
@@ -44,6 +45,7 @@ def main():
     nnue.eval()
     print("Pretrained NNUE loaded!")
     network = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True) 
+    network=network.to(device)
     network.eval()
    
     iteration = 0
