@@ -19,7 +19,20 @@ from RL.checkpoints import save_checkpoint, load_checkpoint
 from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
+import os
+import glob
 
+def clean_old_checkpoints(drive_path, keep_latest=3):
+    checkpoint_files = glob.glob(os.path.join(drive_path, "checkpoint_iter_*.pt"))
+    checkpoint_files.sort(key=os.path.getmtime)
+    if len(checkpoint_files) > keep_latest:
+        files_to_delete = checkpoint_files[:-keep_latest]
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+                print(f"🧹 Storage Cleanup: Deleted old checkpoint {os.path.basename(file_path)}")
+            except Exception as e:
+                print(f"Warning: Could not delete {file_path}: {e}")
 
 def load_buffer_into_ram(replay_buffer):
     buffer_files = glob.glob(f'{DRIVE_PATH}/buffer_*.pkl')
@@ -90,8 +103,16 @@ def main():
         is_better = evaluate(champion, challenger)
 
         if is_better:
-            torch.save(champion.state_dict(), CKPT_PATH)
-            print("Champion updated and saved to Drive")
+            ckpt_name = f"checkpoint_iter_{iteration}.pt"
+            save_checkpoint(champion, f"{DRIVE_PATH}/{ckpt_name}") 
+            with open(f"{DRIVE_PATH}/latest_checkpoint_version.txt", "w") as f:
+                f.write(ckpt_name)
+                
+            print(f"Champion updated and saved to Drive as {ckpt_name}")
+            clean_old_checkpoints(DRIVE_PATH, keep_latest=3)
+            os.system(f'git add {DRIVE_PATH}/latest_checkpoint_version.txt')
+            os.system(f'git commit -m "checkpoint iteration {iteration}"')
+            os.system('git push')
         else:
             print("Champion unchanged")
 
