@@ -2,6 +2,7 @@ import time
 import pickle
 import os
 import torch
+import chess
 from RL.RL_training.self_play import run_self_play
 from RL.combined_network import NNUE_AlphaZero as CombinedNetwork
 from RL.checkpoints import load_checkpoint
