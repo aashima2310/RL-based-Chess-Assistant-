@@ -32,7 +32,7 @@ def play_one_game(game, mcts, network):
             action = np.argmax(action_probs)
 
         if player == -1:
-            canonical_move = idx_to_move(action, canonical_state)
+            canonical_move = halfkp_extractor.idx_to_move(action, canonical_state)
             original_move = chess.Move(
                 chess.square_mirror(canonical_move.from_square),
                 chess.square_mirror(canonical_move.to_square),
