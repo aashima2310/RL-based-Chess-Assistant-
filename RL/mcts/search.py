@@ -1,3 +1,10 @@
+import numpy as np
+import math
+import chess
+import torch
+import numpy as np
+from RL.chess_env.features import HalfKPExtractor
+halfkp_extractor = HalfKPExtractor()
 class MCTS:
   def __init__(self, game, args, model):
     self.game = game
