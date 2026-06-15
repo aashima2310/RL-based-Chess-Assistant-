@@ -28,19 +28,25 @@ class MCTS:
      root.visit_count = 0
     
      if root.policy is None:
-        w_acc, b_acc = halfkp_extractor.board_to_halfkp(state)
-        with torch.no_grad():
+         
+         device = self.args.get('device', torch.device('cpu'))
+         w_acc, b_acc = halfkp_extractor.board_to_halfkp(state)
+         w_acc = w_acc.to(device)
+         b_acc = b_acc.to(device)
+         
+        
+         with torch.no_grad():
             policy_probs, root_value = self.model(w_acc.unsqueeze(0), b_acc.unsqueeze(0))
-        policy_probs = policy_probs.squeeze(0).cpu().numpy()
-        policy_probs *= root.valid_moves
-        total = policy_probs.sum()
-        if total > 0:
+         policy_probs = policy_probs.squeeze(0).cpu().numpy()
+         policy_probs *= root.valid_moves
+         total = policy_probs.sum()
+         if total > 0:
             policy_probs /= total
-        else:
+         else:
             legal = np.where(root.valid_moves == 1)[0]
             policy_probs[legal] = 1.0 / len(legal)
 
-        if self.args.get('add_noise', True):
+         if self.args.get('add_noise', True):
             alpha = self.args.get('dirichlet_alpha', 0.3)
             epsilon = self.args.get('dirichlet_epsilon', 0.25)
             legal_indices = np.where(root.valid_moves == 1)[0]
@@ -49,7 +55,7 @@ class MCTS:
             noise_full[legal_indices] = noise
             policy_probs = (1 - epsilon) * policy_probs + epsilon * noise_full
 
-        root.expand(policy_probs, root_value.item())
+         root.expand(policy_probs, root_value.item())
 
      for _ in range(self.args["num_searches"]):
         node = root
