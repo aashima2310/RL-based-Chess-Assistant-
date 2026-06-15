@@ -47,7 +47,7 @@ class NNUE_AlphaZero(nn.Module):
         device = w_acc.device
         legal_move_mask = None
         if board is not None:
-            legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=w_acc.device)
+            legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=device)
             for move in board.legal_moves:
                 legal_move_mask[halfkp_extractor.move_to_idx(move)] = True
             if w_acc.dim() == 2:
