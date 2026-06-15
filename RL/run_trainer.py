@@ -8,9 +8,7 @@ import shutil
 import gdown
 
 sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
-FOLDER_ID = "https://drive.google.com/drive/folders/1q6OC-jQTiWvTaudDCZzpWeBCErWZmkkO?usp=sharing" 
-
-# Local paths inside your Lightning Studio workspace
+FOLDER_ID = "1q6OC-jQTiWvTaudDCZzpWeBCErWZmkkO" 
 LOCAL_DOWNLOAD_DIR = './downloaded_worker_buffers'
 NNUE_PATH  = '/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth'
 VERSION_FILE = './latest_checkpoint_version.txt'
@@ -23,6 +21,7 @@ from RL.checkpoints import save_checkpoint, load_checkpoint
 from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
+processed_files = set()
 
 def clean_old_checkpoints(workspace_path, keep_latest=3):
     checkpoint_files = glob.glob(os.path.join(workspace_path, "checkpoint_iter_*.pt"))
@@ -37,52 +36,58 @@ def clean_old_checkpoints(workspace_path, keep_latest=3):
                 print(f"Warning: Could not delete {file_path}: {e}")
 
 def load_buffer_into_ram(replay_buffer):
-    # Clear out old local download folder to ensure fresh downloads
     if os.path.exists(LOCAL_DOWNLOAD_DIR):
         shutil.rmtree(LOCAL_DOWNLOAD_DIR)
     os.makedirs(LOCAL_DOWNLOAD_DIR, exist_ok=True)
 
     print("🔄 Downloading latest worker buffers from Google Drive Folder via gdown...")
     try:
-        # Downloads the entire folder's contents into Lightning Studio
+        # Pull down folder contents (Compatibility: argument 'remaining_ok' removed)
         gdown.download_folder(f'https://drive.google.com/drive/folders/{FOLDER_ID}', 
                               output=LOCAL_DOWNLOAD_DIR, quiet=True)
     except Exception as e:
         print(f"Error downloading from Google Drive: {e}")
-        return 0
+        return len(replay_buffer.buffer)
 
     # Scan the freshly downloaded directory for worker files
     buffer_files = glob.glob(os.path.join(LOCAL_DOWNLOAD_DIR, 'buffer_*.pkl'))
 
     if not buffer_files:
         print("No buffer files found in the Drive folder yet, waiting for workers...")
-        return 0
+        return len(replay_buffer.buffer)
 
-    all_data = []
+    new_tuples_added = 0
+    
     for path in buffer_files:
+        file_name = os.path.basename(path)
+        
+        # FIX: Avoid training on the exact same data multiple times
+        if file_name in processed_files:
+            continue
+            
         try:
             with open(path, 'rb') as f:
                 data = pickle.load(f)
+            
+            # Unpack and push valid data tuples into memory
             if isinstance(data, list):
-                all_data.extend(data)
+                for item in data:
+                    if isinstance(item, (tuple, list)) and len(item) == 3:
+                        replay_buffer.push(item)
+                        new_tuples_added += 1
             else:
-                all_data.append(data)
-            print(f"Loaded {len(data)} tuples from downloaded file: {os.path.basename(path)}")
+                if isinstance(data, (tuple, list)) and len(data) == 3:
+                    replay_buffer.push(data)
+                    new_tuples_added += 1
+                    
+            processed_files.add(file_name)
+            print(f" Processed unique data from new file: {file_name}")
+            
         except Exception as e:
-            print(f"Skipping corrupt file {os.path.basename(path)}: {e}")
+            print(f"Skipping corrupt file {file_name}: {e}")
             continue
 
-    if len(all_data) > 50000:
-        all_data = all_data[-50000:]
-
-    print(f"TOTAL: {len(all_data)} tuples collected from {len(buffer_files)} workers")
-    
-    # Rebuild RAM buffer correctly
-    replay_buffer.buffer.clear()
-    for tuple_item in all_data:
-        replay_buffer.push(tuple_item)
-        
-    # Clean up local disk files immediately after copying data to RAM
+    print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)} (Added {new_tuples_added} fresh tuples)")
     shutil.rmtree(LOCAL_DOWNLOAD_DIR)
     
     return len(replay_buffer.buffer)
@@ -99,8 +104,6 @@ def main():
 
     champion = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True)
     champion = champion.to(device)
-
-    # Resume capability based on local tracking file
     resumed = False
     if os.path.exists(VERSION_FILE):
         try:
@@ -152,7 +155,6 @@ def main():
             clean_old_checkpoints("./", keep_latest=3)
             
             # Use Git to automatically push the new version pointers to GitHub
-            # Your Colab workers can pull/download from Git to update their brains!
             os.system(f'git add {VERSION_FILE} {ckpt_name}')
             os.system(f'git commit -m "checkpoint iteration {iteration}"')
             os.system('git push')
