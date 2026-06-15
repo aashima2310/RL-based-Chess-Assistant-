@@ -35,7 +35,7 @@ def main():
     drive.mount('/content/drive')
 
     nnue = NNUE(input_size=40960)
-    nnue.load_state_dict(torch.load('/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth', map_location='cpu'))
+    nnue.load_state_dict(torch.load('/content/drive/MyDrive/chess_rl/nnue.pth', map_location='cpu'))
     nnue.eval()
     print("Pretrained NNUE loaded!")
     network = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True) 
