@@ -58,7 +58,7 @@ def play_one_game(game, mcts, network):
         player = game.get_opponent(player)
 
 
-def run_self_play(network, iteration=0):
+def run_self_play(network, iteration=0,args=None):
     game = Chess_game()
     device = next(network.parameters()).device
 
