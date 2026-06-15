@@ -20,14 +20,20 @@ def get_next_state(self, state, action):
     move = halfkp_extractor.idx_to_move(action, state)
     if move in state.legal_moves:
         state.push(move)
-    else:
-        promo_move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
-        if promo_move in state.legal_moves:
-            state.push(promo_move)
-        else:
-            legal = list(state.legal_moves)
-            if legal:
-                state.push(legal[0])
+        return state
+    bare_move = chess.Move(move.from_square, move.to_square)
+    if bare_move in state.legal_moves:
+        state.push(bare_move)
+        return state
+    promo_move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
+    if promo_move in state.legal_moves:
+        state.push(promo_move)
+        return state
+    legal = list(state.legal_moves)
+    print(f"WARNING: illegal move {move} decoded from action {action}, picking first legal move")
+    print(f"Board: {state.fen()}")
+    if legal:
+        state.push(legal[0])
     return state
 
   def get_valid_moves(self,state):
