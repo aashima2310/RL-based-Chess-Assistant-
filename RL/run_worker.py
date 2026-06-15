@@ -13,7 +13,7 @@ sys.path.append('/content/RL-based-Chess-Assistant-')
 
 
 checkpoint_poll_seconds = 120
-buffer = "/content/RL-based-Chess-Assistant-/buffer.pkl"
+buffer = "/content/drive/MyDrive/chess_rl/buffer.pkl"
 def load_buffer():
     if os.path.exists(buffer):
         with open(buffer, 'rb') as f:
