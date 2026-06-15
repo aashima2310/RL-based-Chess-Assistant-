@@ -86,7 +86,7 @@ def main():
         network = load_latest_checkpoint(network)
         network.eval()
 
-        game_data = run_self_play(network, iteration, args)
+        game_data = run_self_play(network, iteration)
         print(f"Generated {len(game_data)} tuples")
 
         if len(game_data) > 0:
