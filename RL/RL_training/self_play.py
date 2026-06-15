@@ -32,13 +32,13 @@ def play_one_game(game, mcts, network):
             action = np.argmax(action_probs)
 
         if player == -1:
-            canonical_move = index_to_move(action, canonical_state)
+            canonical_move = idx_to_move(action, canonical_state)
             original_move = chess.Move(
                 chess.square_mirror(canonical_move.from_square),
                 chess.square_mirror(canonical_move.to_square),
                 promotion=canonical_move.promotion
             )
-            action = move_to_index(original_move)
+            action = move_to_idx(original_move)
 
         state = game.get_next_state(state, action)
         value, is_terminal = game.get_value_and_terminated(state, action)
