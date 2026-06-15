@@ -53,8 +53,8 @@ class NNUE_AlphaZero(nn.Module):
         input_weights = self.backbone.input_weights.to(device)
         input_bias = self.backbone.input_bias.to(device)
 
-        w_processed = torch.matmul(w_acc, self.backbone.input_weights) + self.backbone.input_bias
-        b_processed = torch.matmul(b_acc, self.backbone.input_weights) + self.backbone.input_bias
+        w_processed = torch.matmul(w_acc, input_weights) + input_bias
+        b_processed = torch.matmul(b_acc, input_weights) +input_bias
         x = torch.cat([w_processed, b_processed], dim=1)
         x = self.backbone.clipped_relu(x)
         x = self.backbone.clipped_relu(self.backbone.l2(x))
