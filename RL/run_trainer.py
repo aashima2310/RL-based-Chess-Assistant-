@@ -74,11 +74,11 @@ def load_buffer_into_ram(replay_buffer):
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, (tuple, list)) and len(item) == 3:
-                        replay_buffer.push(item)
+                        all_data.append(item)
                         new_tuples_added += 1
             else:
                 if isinstance(data, (tuple, list)) and len(data) == 3:
-                    replay_buffer.push(data)
+                    all_data.append(item)
                     new_tuples_added += 1
                     
             processed_files.add(file_name)
@@ -89,7 +89,6 @@ def load_buffer_into_ram(replay_buffer):
             continue
 
     print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)} (Added {new_tuples_added} fresh tuples)")
-    replay_buffer.buffer.clear()
     for tuple_item in all_data:
         try:
             replay_buffer.push(tuple_item)
