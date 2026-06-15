@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import sys
-sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
+import os
+repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(repo_path)
 from RL.chess_env.features import HalfKPExtractor
 
 halfkp_extractor = HalfKPExtractor()
