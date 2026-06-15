@@ -29,7 +29,7 @@ def load_buffer_into_ram(replay_buffer):
 def main():
     # load pretrained NNUE backbone
     nnue = NNUE(input_size=40960)
-    nnue.load_state_dict(torch.load('nnue.pth', map_location='cpu'))
+    nnue.load_state_dict(torch.load('/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth', map_location='cpu'))
     nnue.eval()
     print("Pretrained NNUE loaded!")
 
