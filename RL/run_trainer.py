@@ -13,7 +13,7 @@ from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
 
-buffer_path = "buffer.pkl"
+buffer_path = "/teamspace/studios/this_studio/drive/MyDrive/chess_rl/buffer.pkl"
 
 def load_buffer_into_ram(replay_buffer):
     if not os.path.exists(buffer_path):
