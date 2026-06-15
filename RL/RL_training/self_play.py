@@ -77,7 +77,7 @@ def run_self_play(network, iteration=0, args=None):
     }
 
     import gc
-
+    all_data = []
     for episode in range(Config.num_episodes):
         print(f"Episode {episode + 1}/{Config.num_episodes}")
         mcts = MCTS(game, args, network)      
