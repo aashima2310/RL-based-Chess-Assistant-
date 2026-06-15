@@ -21,7 +21,7 @@ class Node:
     self.visit_count = 0
     self.value_sum = 0
     self.policy = policy_from_nn
-    self.valid_moves = game.get_valid_moves(state)
+    self.valid_moves = game.get_valid_moves(state).numpy()
 
   def select(self):
     best_child = None
