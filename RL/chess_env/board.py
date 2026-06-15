@@ -15,10 +15,19 @@ class Chess_game:
   def get_initial_state(self):
     return chess.Board()
 
-  def get_next_state(self,state,action):
-    state=state.copy()
-    move = halfkp_extractor.idx_to_move(action,state)
-    state.push(move)
+def get_next_state(self, state, action):
+    state = state.copy()
+    move = halfkp_extractor.idx_to_move(action, state)
+    if move in state.legal_moves:
+        state.push(move)
+    else:
+        promo_move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
+        if promo_move in state.legal_moves:
+            state.push(promo_move)
+        else:
+            legal = list(state.legal_moves)
+            if legal:
+                state.push(legal[0])
     return state
 
   def get_valid_moves(self,state):
