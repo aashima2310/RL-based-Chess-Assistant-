@@ -1,6 +1,11 @@
 import numpy as np
 import math
 import chess
+import torch
+import sys
+sys.path.append('/content/RL-based-Chess-Assistant-')
+from RL.chess_env.features import HalfKPExtractor
+halfkp_extractor = HalfKPExtractor()
 class Chess_game:
   def __init__(self):
    self.row_count=8
