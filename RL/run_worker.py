@@ -1,4 +1,5 @@
 import time
+import uuid
 import pickle
 import os
 import torch
@@ -12,7 +13,6 @@ from google.colab import drive
 drive.mount('/content/drive')
 
 DRIVE_PATH  = '/content/drive/MyDrive/chess_rl'
-import uuid
 worker_id = str(uuid.uuid4())[:8]
 BUFFER_PATH = f'{DRIVE_PATH}/buffer_{worker_id}.pkl'
 CKPT_PATH   = f'{DRIVE_PATH}/checkpoint.pt'
