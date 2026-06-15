@@ -15,7 +15,7 @@ class Chess_game:
   def get_initial_state(self):
     return chess.Board()
 
-def get_next_state(self, state, action):
+  def get_next_state(self, state, action):
     state = state.copy()
     move = halfkp_extractor.idx_to_move(action, state)
     if move in state.legal_moves:
