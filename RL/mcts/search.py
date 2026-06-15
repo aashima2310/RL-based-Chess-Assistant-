@@ -21,13 +21,13 @@ class MCTS:
         return self.nodes[board_fen]
 
     # In MCTS.search() — remove the mirroring
-def search(self, state):
-    original_turn = state.turn
-    board_fen_for_root = state.board_fen()
-    root = self.get_node(board_fen_for_root)
-    root.visit_count = 0
+    def search(self, state):
+     original_turn = state.turn
+     board_fen_for_root = state.board_fen()
+     root = self.get_node(board_fen_for_root)
+     root.visit_count = 0
     
-    if root.policy is None:
+     if root.policy is None:
         w_acc, b_acc = halfkp_extractor.board_to_halfkp(state)
         with torch.no_grad():
             policy_probs, root_value = self.model(w_acc.unsqueeze(0), b_acc.unsqueeze(0))
@@ -51,7 +51,7 @@ def search(self, state):
 
         root.expand(policy_probs, root_value.item())
 
-    for _ in range(self.args["num_searches"]):
+     for _ in range(self.args["num_searches"]):
         node = root
         path = [node]
 
@@ -93,17 +93,17 @@ def search(self, state):
             node_to_update.back_propagate(value)
             value = self.game.get_opponent_value(value)
 
-    action_probs = np.zeros(self.game.action_size)
-    for action, child in root.children.items():
+     action_probs = np.zeros(self.game.action_size)
+     for action, child in root.children.items():
         action_probs[action] = child.visit_count
 
-    total_visits = np.sum(action_probs)
-    if total_visits > 0:
+     total_visits = np.sum(action_probs)
+     if total_visits > 0:
         action_probs /= total_visits
-    else:
+     else:
         legal_actions_indices = np.where(root.valid_moves == 1)[0]
         if len(legal_actions_indices) > 0:
             action_probs[legal_actions_indices] = 1.0 / len(legal_actions_indices)
 
-    return action_probs
+     return action_probs
 
