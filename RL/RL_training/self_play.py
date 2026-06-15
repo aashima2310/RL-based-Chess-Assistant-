@@ -6,7 +6,7 @@ sys.path.append('/content/RL-based-Chess-Assistant-')
 from RL.chess_env.board import Chess_game
 from RL.mcts.search import MCTS
 from RL.config import Config
-from RL.chess_env.features import HalfKPExtractor, move_to_index, index_to_move
+from RL.chess_env.features import HalfKPExtractor
 
 halfkp_extractor = HalfKPExtractor()
 
