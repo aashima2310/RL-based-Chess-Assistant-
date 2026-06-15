@@ -6,8 +6,6 @@ sys.path.append('/content/RL-based-Chess-Assistant-')
 from RL.mcts.node import Node
 from RL.chess_env.features import HalfKPExtractor
 
-halfkp_extractor = HalfKPExtractor()
-
 class MCTS:
     def __init__(self, game, args, model):
         self.game = game
@@ -15,13 +13,13 @@ class MCTS:
         self.model=model
         self.device = next(model.parameters()).device
         self.nodes = {}
+        self.extractor = HalfKPExtractor()
 
     def get_node(self, board_fen):
         if board_fen not in self.nodes:
             self.nodes[board_fen] = Node(self.game, self.args, chess.Board(board_fen))
         return self.nodes[board_fen]
 
-    # In MCTS.search() — remove the mirroring
     def search(self, state):
      original_turn = state.turn
      board_fen_for_root = state.board_fen()
@@ -29,7 +27,7 @@ class MCTS:
      root.visit_count = 0
     
      if root.policy is None:
-         w_acc, b_acc = halfkp_extractor.board_to_halfkp(state)
+         w_acc, b_acc = self.extractor.board_to_halfkp(state)
          w_acc = w_acc.to(device)
          b_acc = b_acc.to(device)
          
@@ -74,7 +72,7 @@ class MCTS:
         value, is_terminal = self.game.get_value_and_terminated(node.state, node.action_taken)
 
         if not is_terminal:
-            w_acc, b_acc = halfkp_extractor.board_to_halfkp(node.state)
+            w_acc, b_acc = self.extractor.board_to_halfkp(node.state)
             w_acc = w_acc.to(device)
             b_acc = b_acc.to(device)
             with torch.no_grad():
