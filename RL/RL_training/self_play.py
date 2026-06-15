@@ -60,6 +60,7 @@ def play_one_game(game, mcts, network):
 def run_self_play(network, iteration=0):
 
     game = Chess_game()
+    device = next(network.parameters()).device
 
     sims = Config.num_simulations
     for threshold, count in sorted(Config.sim_schedule.items()):
@@ -67,9 +68,13 @@ def run_self_play(network, iteration=0):
             sims = count
 
     args = {
-        'C': Config.c_puct,
-        'num_searches': sims
-    }
+    'C': Config.c_puct,
+    'num_searches': sims,
+    'add_noise': True,
+    'dirichlet_alpha': 0.3,
+    'dirichlet_epsilon': 0.25,
+    'device': device
+}
 
     mcts = MCTS(game, args,network)
     all_data = []
