@@ -18,24 +18,29 @@ class Chess_game:
   def get_next_state(self, state, action):
     state = state.copy()
     move = halfkp_extractor.idx_to_move(action, state)
-    if move in state.legal_moves:
+    
+    # convert legal moves to uci strings for comparison
+    legal_ucis = [m.uci() for m in state.legal_moves]
+    
+    if move.uci() in legal_ucis:
         state.push(move)
         return state
+    
     bare_move = chess.Move(move.from_square, move.to_square)
-    if bare_move in state.legal_moves:
+    if bare_move.uci() in legal_ucis:
         state.push(bare_move)
         return state
+    
     promo_move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
-    if promo_move in state.legal_moves:
+    if promo_move.uci() in legal_ucis:
         state.push(promo_move)
         return state
+
+    # fallback
     legal = list(state.legal_moves)
-    print(f"WARNING: illegal move {move} decoded from action {action}, picking first legal move")
-    print(f"Board: {state.fen()}")
     if legal:
         state.push(legal[0])
     return state
-
   def get_valid_moves(self,state):
     mask = torch.zeros(4672, dtype=torch.float32)
     for move in state.legal_moves:
