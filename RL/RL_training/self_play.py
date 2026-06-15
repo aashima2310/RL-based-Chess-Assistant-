@@ -7,14 +7,13 @@ import sys
 sys.path.append('/content/RL-based-Chess-Assistant-')
 
 def play_one_game(game, mcts, network):
-
     state = game.get_initial_state()
     training_data = []
     player = 1
 
     while True:
-        neutral_state = game.change_perspective(state) if player == -1 else state.copy()
-        action_probs = mcts.search(neutral_state)
+        # FIXED — always pass original state, MCTS handles mirroring internally
+        action_probs = mcts.search(state)
 
         training_data.append((state.copy(), action_probs, player))
 
@@ -36,9 +35,7 @@ def play_one_game(game, mcts, network):
                     hist_value = value
                 else:
                     hist_value = game.get_opponent_value(value)
-
                 return_data.append((hist_state, hist_probs, hist_value))
-
             return return_data
 
         player = game.get_opponent(player)
