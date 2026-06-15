@@ -74,8 +74,8 @@ class MCTS:
 
         if not is_terminal:
             w_acc, b_acc = self.extractor.board_to_halfkp(node.state)
-            w_acc = w_acc.to(device)
-            b_acc = b_acc.to(device)
+            w_acc = w_acc.to(self.device)
+            b_acc = b_acc.to(self.device)
             with torch.no_grad():
                 policy_probs, value = self.model(w_acc.unsqueeze(0), b_acc.unsqueeze(0))
             policy_probs = policy_probs.squeeze(0).cpu().numpy()
