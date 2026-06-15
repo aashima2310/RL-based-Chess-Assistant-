@@ -57,6 +57,7 @@ def load_buffer_into_ram(replay_buffer):
         return len(replay_buffer.buffer)
 
     new_tuples_added = 0
+    all_data=[]
     
     for path in buffer_files:
         file_name = os.path.basename(path)
@@ -95,6 +96,7 @@ def load_buffer_into_ram(replay_buffer):
         except TypeError:
             if len(tuple_item) == 3:
                 replay_buffer.push(tuple_item[0], tuple_item[1], tuple_item[2])
+    print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)}")
     shutil.rmtree(LOCAL_DOWNLOAD_DIR)
     
     return len(replay_buffer.buffer)
