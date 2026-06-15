@@ -38,7 +38,7 @@ def play_one_game(game, mcts, network):
                 chess.square_mirror(canonical_move.to_square),
                 promotion=canonical_move.promotion
             )
-            action = move_to_idx(original_move)
+            action = halfkp_extractor.move_to_idx(original_move)
 
         state = game.get_next_state(state, action)
         value, is_terminal = game.get_value_and_terminated(state, action)
