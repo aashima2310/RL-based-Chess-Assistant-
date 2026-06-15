@@ -3,66 +3,99 @@ import pickle
 import os
 import torch
 import chess
+import sys
+import fcntl
+
+sys.path.append('/content/RL-based-Chess-Assistant-')
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+DRIVE_PATH  = '/content/drive/MyDrive/chess_rl'
+BUFFER_PATH = f'{DRIVE_PATH}/buffer.pkl'
+CKPT_PATH   = f'{DRIVE_PATH}/checkpoint.pt'
+NNUE_PATH   = f'{DRIVE_PATH}/nnue.pth'
+
 from RL.RL_training.self_play import run_self_play
 from RL.combined_network import NNUE_AlphaZero as CombinedNetwork
-from RL.checkpoints import load_checkpoint
 from RL.config import Config
 from pretraining_nnue_code import NNUE
-import sys
-sys.path.append('/content/RL-based-Chess-Assistant-')
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-checkpoint_poll_seconds = 120
-buffer = "/content/drive/MyDrive/chess_rl/buffer.pkl"
+
 def load_buffer():
-    if os.path.exists(buffer):
-        with open(buffer, 'rb') as f:
+    if os.path.exists(BUFFER_PATH):
+        with open(BUFFER_PATH, 'rb') as f:
             return pickle.load(f)
     return []
 
-import fcntl 
+
 def save_buffer(data):
     existing = load_buffer()
     existing.extend(data)
     if len(existing) > 50000:
         existing = existing[-50000:]
-    
-    tmp_path = buffer + ".tmp"
+    tmp_path = BUFFER_PATH + ".tmp"
     with open(tmp_path, 'wb') as f:
-        fcntl.flock(f, fcntl.LOCK_EX)  
+        fcntl.flock(f, fcntl.LOCK_EX)
         pickle.dump(existing, f)
         fcntl.flock(f, fcntl.LOCK_UN)
-    os.replace(tmp_path, buffer)
+    os.replace(tmp_path, BUFFER_PATH)
+    print(f"Buffer saved: {len(existing)} tuples")
+
+
+def load_latest_checkpoint(network):
+    if os.path.exists(CKPT_PATH):
+        network.load_state_dict(torch.load(CKPT_PATH, map_location=device))
+        print("Loaded latest checkpoint from Drive")
+    else:
+        print("No checkpoint yet — using pretrained NNUE weights")
+    return network
+
+
+def build_model():
+    nnue = NNUE(input_size=40960)
+    nnue.load_state_dict(torch.load(NNUE_PATH, map_location=device))
+    nnue.eval()
+    print("NNUE loaded")
+    network = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True)
+    network = network.to(device)
+    network.eval()
+    return network
 
 
 def main():
-    from google.colab import drive
-    drive.mount('/content/drive')
+    network = build_model()
 
-    nnue = NNUE(input_size=40960)
-    nnue.load_state_dict(torch.load('/content/drive/MyDrive/chess_rl/nnue.pth', map_location='cpu'))
-    nnue.eval()
-    print("Pretrained NNUE loaded!")
-    network = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True) 
-    network=network.to(device)
-    network.eval()
-   
+    args = {
+        'C': Config.c_puct,
+        'num_searches': Config.num_simulations,
+        'device': device,             
+        'add_noise': True,
+        'dirichlet_alpha': 0.3,
+        'dirichlet_epsilon': 0.25
+    }
+
     iteration = 0
 
     while True:
+        print(f"\n--- Worker iteration {iteration} ---")
 
-        print(f"\n--- Worker: iteration {iteration} ---")
+        network = load_latest_checkpoint(network)
+        network.eval()
 
-        network = load_checkpoint(network, "checkpoint.pt")
-        game_data = run_self_play(network, iteration)
-        save_buffer(game_data)
+        game_data = run_self_play(network, iteration, args)
+        print(f"Generated {len(game_data)} tuples")
 
-        print(f"Worker wrote {len(game_data)} tuples to buffer")
+        if len(game_data) > 0:
+            save_buffer(game_data)
+        else:
+            print("WARNING: no game data generated this iteration")
 
         iteration += 1
-
-        time.sleep(checkpoint_poll_seconds)
+        time.sleep(120)
 
 
 if __name__ == "__main__":
