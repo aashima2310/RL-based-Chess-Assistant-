@@ -13,17 +13,28 @@ from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
 
-buffer_path = "/teamspace/studios/this_studio/drive/MyDrive/chess_rl/buffer.pkl"
+# In run_trainer.py, change load_buffer_into_ram to download from Drive
+import gdown
+
+BUFFER_DRIVE_ID = None  # will be set after first worker run
 
 def load_buffer_into_ram(replay_buffer):
-    if not os.path.exists(buffer_path):
-        print("Buffer file not found yet, waiting for workers...")
+    if BUFFER_DRIVE_ID is None:
+        print("Buffer Drive ID not set yet, waiting...")
         return 0
-    with open(buffer_path, 'rb') as f:
+    
+    gdown.download(f'https://drive.google.com/uc?id={BUFFER_DRIVE_ID}', 
+                   'buffer.pkl', quiet=True)
+    
+    if not os.path.exists('buffer.pkl'):
+        print("Buffer not found yet, waiting for workers...")
+        return 0
+    
+    with open('buffer.pkl', 'rb') as f:
         data = pickle.load(f)
     replay_buffer.buffer.clear()
     replay_buffer.push(data)
-    print(f"Loaded {len(data)} tuples into replay buffer")
+    print(f"Loaded {len(data)} tuples from Drive")
     return len(data)
 
 def main():
