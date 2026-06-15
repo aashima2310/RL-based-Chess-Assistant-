@@ -4,12 +4,16 @@ import time
 import sys
 import glob
 import torch
+import shutil
+import gdown
 
 sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
+FOLDER_ID = "https://drive.google.com/drive/folders/1q6OC-jQTiWvTaudDCZzpWeBCErWZmkkO?usp=sharing" 
 
-DRIVE_PATH = '/teamspace/studios/this_studio/drive/MyDrive/chess_rl'
+# Local paths inside your Lightning Studio workspace
+LOCAL_DOWNLOAD_DIR = './downloaded_worker_buffers'
 NNUE_PATH  = '/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth'
-CKPT_PATH  = f'{DRIVE_PATH}/checkpoint.pt'
+VERSION_FILE = './latest_checkpoint_version.txt'
 
 from RL.RL_training.trainer import Trainer
 from RL.RL_training.replay_buffer import ReplayBuffer
@@ -19,26 +23,39 @@ from RL.checkpoints import save_checkpoint, load_checkpoint
 from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
-import os
-import glob
 
-def clean_old_checkpoints(drive_path, keep_latest=3):
-    checkpoint_files = glob.glob(os.path.join(drive_path, "checkpoint_iter_*.pt"))
+def clean_old_checkpoints(workspace_path, keep_latest=3):
+    checkpoint_files = glob.glob(os.path.join(workspace_path, "checkpoint_iter_*.pt"))
     checkpoint_files.sort(key=os.path.getmtime)
     if len(checkpoint_files) > keep_latest:
         files_to_delete = checkpoint_files[:-keep_latest]
         for file_path in files_to_delete:
             try:
                 os.remove(file_path)
-                print(f"🧹 Storage Cleanup: Deleted old checkpoint {os.path.basename(file_path)}")
+                print(f"🧹 Storage Cleanup: Deleted old local checkpoint {os.path.basename(file_path)}")
             except Exception as e:
                 print(f"Warning: Could not delete {file_path}: {e}")
 
 def load_buffer_into_ram(replay_buffer):
-    buffer_files = glob.glob(f'{DRIVE_PATH}/buffer_*.pkl')
+    # Clear out old local download folder to ensure fresh downloads
+    if os.path.exists(LOCAL_DOWNLOAD_DIR):
+        shutil.rmtree(LOCAL_DOWNLOAD_DIR)
+    os.makedirs(LOCAL_DOWNLOAD_DIR, exist_ok=True)
+
+    print("🔄 Downloading latest worker buffers from Google Drive Folder via gdown...")
+    try:
+        # Downloads the entire folder's contents into Lightning Studio
+        gdown.download_folder(f'https://drive.google.com/drive/folders/{FOLDER_ID}', 
+                              output=LOCAL_DOWNLOAD_DIR, quiet=True, remaining_ok=True)
+    except Exception as e:
+        print(f"Error downloading from Google Drive: {e}")
+        return 0
+
+    # Scan the freshly downloaded directory for worker files
+    buffer_files = glob.glob(os.path.join(LOCAL_DOWNLOAD_DIR, 'buffer_*.pkl'))
 
     if not buffer_files:
-        print("No buffer files found, waiting for workers...")
+        print("No buffer files found in the Drive folder yet, waiting for workers...")
         return 0
 
     all_data = []
@@ -46,19 +63,29 @@ def load_buffer_into_ram(replay_buffer):
         try:
             with open(path, 'rb') as f:
                 data = pickle.load(f)
-            all_data.extend(data)
-            print(f"Loaded {len(data)} tuples from {os.path.basename(path)}")
+            if isinstance(data, list):
+                all_data.extend(data)
+            else:
+                all_data.append(data)
+            print(f"Loaded {len(data)} tuples from downloaded file: {os.path.basename(path)}")
         except Exception as e:
-            print(f"Skipping {path}: {e}")
+            print(f"Skipping corrupt file {os.path.basename(path)}: {e}")
             continue
 
     if len(all_data) > 50000:
         all_data = all_data[-50000:]
 
-    print(f"TOTAL: {len(all_data)} tuples from {len(buffer_files)} workers")
+    print(f"TOTAL: {len(all_data)} tuples collected from {len(buffer_files)} workers")
+    
+    # Rebuild RAM buffer correctly
     replay_buffer.buffer.clear()
-    replay_buffer.push(all_data)
-    return len(all_data)
+    for tuple_item in all_data:
+        replay_buffer.push(tuple_item)
+        
+    # Clean up local disk files immediately after copying data to RAM
+    shutil.rmtree(LOCAL_DOWNLOAD_DIR)
+    
+    return len(replay_buffer.buffer)
 
 
 def main():
@@ -73,11 +100,22 @@ def main():
     champion = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True)
     champion = champion.to(device)
 
-    if os.path.exists(CKPT_PATH):
-        champion.load_state_dict(torch.load(CKPT_PATH, map_location=device))
-        print("Resumed from existing checkpoint")
-    else:
-        print("No checkpoint found, starting fresh")
+    # Resume capability based on local tracking file
+    resumed = False
+    if os.path.exists(VERSION_FILE):
+        try:
+            with open(VERSION_FILE, 'r') as f:
+                latest_ckpt_name = f.read().strip()
+            actual_ckpt_path = f"./{latest_ckpt_name}"
+            if os.path.exists(actual_ckpt_path):
+                champion.load_state_dict(torch.load(actual_ckpt_path, map_location=device))
+                print(f"Resumed from existing local checkpoint: {latest_ckpt_name}")
+                resumed = True
+        except Exception as e:
+            print(f"Could not read local pointer file: {e}")
+
+    if not resumed:
+        print("No dynamic checkpoint found, starting fresh with base NNUE weights")
 
     trainer = Trainer(champion)
     replay_buffer = ReplayBuffer(max_size=50000)
@@ -89,7 +127,7 @@ def main():
         num_tuples = load_buffer_into_ram(replay_buffer)
 
         if num_tuples < Config.batch_size:
-            print(f"Not enough data yet ({num_tuples} tuples). Waiting 60s...")
+            print(f"Not enough data yet ({num_tuples} tuples). Need at least {Config.batch_size}. Waiting 60s...")
             time.sleep(60)
             continue
 
@@ -104,13 +142,18 @@ def main():
 
         if is_better:
             ckpt_name = f"checkpoint_iter_{iteration}.pt"
-            save_checkpoint(champion, f"{DRIVE_PATH}/{ckpt_name}") 
-            with open(f"{DRIVE_PATH}/latest_checkpoint_version.txt", "w") as f:
+            # Saves checkpoints locally inside Lightning Studio workspace
+            save_checkpoint(champion, f"./{ckpt_name}") 
+            
+            with open(VERSION_FILE, "w") as f:
                 f.write(ckpt_name)
                 
-            print(f"Champion updated and saved to Drive as {ckpt_name}")
-            clean_old_checkpoints(DRIVE_PATH, keep_latest=3)
-            os.system(f'git add {DRIVE_PATH}/latest_checkpoint_version.txt')
+            print(f"Champion updated and saved locally as {ckpt_name}")
+            clean_old_checkpoints("./", keep_latest=3)
+            
+            # Use Git to automatically push the new version pointers to GitHub
+            # Your Colab workers can pull/download from Git to update their brains!
+            os.system(f'git add {VERSION_FILE} {ckpt_name}')
             os.system(f'git commit -m "checkpoint iteration {iteration}"')
             os.system('git push')
         else:
