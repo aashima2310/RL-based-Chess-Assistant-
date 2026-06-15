@@ -6,7 +6,6 @@ import math
 import chess
 import torch
 import numpy as np
-from RL.chess_env.features 
 from RL.chess_env.features import HalfKPExtractor
 halfkp_extractor = HalfKPExtractor()
 class Node:
