@@ -90,7 +90,13 @@ def main():
         print(f"Generated {len(game_data)} tuples")
 
         if len(game_data) > 0:
-            save_buffer(game_data)
+                        
+            try:
+                save_buffer(game_data)
+            except Exception as e:
+                print(f"Buffer write failed: {e}, retrying in 10s")
+                time.sleep(10)
+                save_buffer(game_data)
         else:
             print("WARNING: no game data generated this iteration")
 
