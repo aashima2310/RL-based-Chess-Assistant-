@@ -12,7 +12,9 @@ from google.colab import drive
 drive.mount('/content/drive')
 
 DRIVE_PATH  = '/content/drive/MyDrive/chess_rl'
-BUFFER_PATH = f'{DRIVE_PATH}/buffer.pkl'
+import uuid
+worker_id = str(uuid.uuid4())[:8]
+BUFFER_PATH = f'{DRIVE_PATH}/buffer_{worker_id}.pkl'
 CKPT_PATH   = f'{DRIVE_PATH}/checkpoint.pt'
 NNUE_PATH   = f'{DRIVE_PATH}/nnue.pth'
 
