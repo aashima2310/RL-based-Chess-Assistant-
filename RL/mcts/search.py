@@ -12,7 +12,8 @@ class MCTS:
     def __init__(self, game, args, model):
         self.game = game
         self.args = args
-        self.model = model
+        self.model=model
+        self.device = next(model.parameters()).device
         self.nodes = {}
 
     def get_node(self, board_fen):
@@ -76,6 +77,9 @@ class MCTS:
 
         if not is_terminal:
             w_acc, b_acc = halfkp_extractor.board_to_halfkp(node.state)
+            device = next(self.model.parameters()).device  # or self.args.get('device', torch.device('cpu'))
+            w_acc = w_acc.to(device)
+            b_acc = b_acc.to(device)
             with torch.no_grad():
                 policy_probs, value = self.model(w_acc.unsqueeze(0), b_acc.unsqueeze(0))
             policy_probs = policy_probs.squeeze(0).cpu().numpy()
