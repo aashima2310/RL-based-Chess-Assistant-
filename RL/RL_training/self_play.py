@@ -5,6 +5,9 @@ from RL.config import Config
 from RL.chess_env import features
 import sys
 sys.path.append('/content/RL-based-Chess-Assistant-')
+import chess
+from RL.chess_env.features import HalfKPExtractor
+halfkp_extractor = HalfKPExtractor()
 
 def play_one_game(game, mcts, network):
     state = game.get_initial_state()
@@ -12,9 +15,13 @@ def play_one_game(game, mcts, network):
     player = 1
 
     while True:
-        # FIXED — always pass original state, MCTS handles mirroring internally
-        action_probs = mcts.search(state)
-
+        # always pass canonical state to MCTS (white perspective)
+        if player == -1:
+            canonical_state = game.change_perspective(state)
+        else:
+            canonical_state = state.copy()
+            
+        action_probs = mcts.search(canonical_state)
         training_data.append((state.copy(), action_probs, player))
 
         move_number = state.fullmove_number
@@ -22,6 +29,16 @@ def play_one_game(game, mcts, network):
             action = np.random.choice(len(action_probs), p=action_probs)
         else:
             action = np.argmax(action_probs)
+
+        if player == -1:
+            # mirror action back to original perspective
+            canonical_move = halfkp_extractor.idx_to_move(action, canonical_state)
+            original_move = chess.Move(
+                chess.square_mirror(canonical_move.from_square),
+                chess.square_mirror(canonical_move.to_square),
+                promotion=canonical_move.promotion
+            )
+            action = halfkp_extractor.move_to_idx(original_move)
 
         state = game.get_next_state(state, action)
         value, is_terminal = game.get_value_and_terminated(state, action)
@@ -39,7 +56,6 @@ def play_one_game(game, mcts, network):
             return return_data
 
         player = game.get_opponent(player)
-
 
 def run_self_play(network, iteration=0):
 
