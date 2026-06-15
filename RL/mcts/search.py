@@ -29,8 +29,8 @@ class MCTS:
      if root.policy is None:
          device = self.args.get('device', torch.device('cpu'))
          w_acc, b_acc = self.extractor.board_to_halfkp(state)
-         w_acc = w_acc.to(self.device)
-         b_acc = b_acc.to(self.device)
+         w_acc = w_acc.to(device)
+         b_acc = b_acc.to(device)
          
         
          with torch.no_grad():
