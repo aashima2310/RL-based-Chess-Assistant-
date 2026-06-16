@@ -137,6 +137,11 @@ def main():
             print(f"Not enough data yet ({num_tuples} tuples). Need at least {Config.batch_size}. Waiting 60s...")
             time.sleep(60)
             continue
+        if iteration == 3:
+            print(">>> Phase 2: Unfreezing backbone for fine-tuning!")
+            param_groups = unfreeze_backbone(champion, lr_scale=0.1)
+            trainer.optimizer = torch.optim.Adam(param_groups, lr=Config.lr)
+  
 
         loss = trainer.train(replay_buffer)
         print(f"Training loss: {loss:.4f}")
