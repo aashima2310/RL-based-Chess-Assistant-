@@ -10,6 +10,7 @@ class Trainer:
 
     def __init__(self, network):
         self.network = network
+        self.device = next(network.parameters()).device
         self.optimizer = optim.Adam(
             self.network.parameters(),
             lr=Config.lr
@@ -41,10 +42,11 @@ class Trainer:
 
             policy_preds, value_preds = self.network(w_acc, b_acc)
 
-            policy_loss = self.policy_loss_fn(policy_preds, policy_targets)
-            value_loss = self.value_loss_fn(value_preds, value_targets)
-          
-            loss = policy_loss + value_loss
+            loss, policy_loss, value_loss = alphazero_loss(
+                policy_preds, value_preds,
+                policy_targets, value_targets,
+                model=self.network
+            )
             self.optimizer.zero_grad()
 
             loss.backward()
