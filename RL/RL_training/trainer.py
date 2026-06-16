@@ -39,7 +39,7 @@ class Trainer:
             policy_targets = torch.tensor(policies, dtype=torch.float32)
             value_targets = torch.tensor(values, dtype=torch.float32).unsqueeze(1)
 
-            policy_preds, value_preds = self.network(state_tensors)
+            policy_preds, value_preds = self.network(w_acc, b_acc)
 
             policy_loss = self.policy_loss_fn(policy_preds, policy_targets)
             value_loss = self.value_loss_fn(value_preds, value_targets)
@@ -48,6 +48,7 @@ class Trainer:
             self.optimizer.zero_grad()
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.network.parameters(), max_norm=1.0)
             self.optimizer.step()
             total_loss += loss.item()
 
