@@ -4,6 +4,7 @@ import torch.optim as optim
 import numpy as np
 from chess_env.features import board_to_tensor_769
 from config import Config
+from model import alphazero_loss
 
 
 class Trainer:
