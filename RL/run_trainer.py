@@ -22,7 +22,14 @@ from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
 processed_files = set()
-
+def unfreeze_backbone(self, lr_scale=0.1):
+        for param in self.backbone.parameters():
+            param.requires_grad = True
+        param_groups = [
+            {'params': self.backbone.parameters(), 'lr': Config.lr * lr_scale},
+            {'params': [p for n, p in self.named_parameters() if 'backbone' not in n]}
+        ]
+        return param_groups
 def clean_old_checkpoints(workspace_path, keep_latest=3):
     checkpoint_files = glob.glob(os.path.join(workspace_path, "checkpoint_iter_*.pt"))
     checkpoint_files.sort(key=os.path.getmtime)
