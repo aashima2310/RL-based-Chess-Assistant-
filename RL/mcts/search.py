@@ -36,8 +36,6 @@ class MCTS:
 
         return policy_probs, value
     def _batch_evaluate(self, nodes):
-        non_terminal = [n for n in nodes if not n.is_terminal
-                        if hasattr(n, 'is_terminal') else nodes]
         valid_nodes = []
         for n in nodes:
             _, is_term = self.game.get_value_and_terminated(
