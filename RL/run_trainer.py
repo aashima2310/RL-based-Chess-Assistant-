@@ -6,6 +6,7 @@ import glob
 import torch
 import shutil
 import gdown
+import subprocess
 
 sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
 FOLDER_ID = "1q6OC-jQTiWvTaudDCZzpWeBCErWZmkkO" 
@@ -33,7 +34,18 @@ def clean_old_checkpoints(workspace_path, keep_latest=3):
                 print(f"🧹 Storage Cleanup: Deleted old local checkpoint {os.path.basename(file_path)}")
             except Exception as e:
                 print(f"Warning: Could not delete {file_path}: {e}")
-
+def save_checkpoint_to_drive(ckpt_path, remote_name='gdrive', drive_folder='chess_checkpoints'):
+    try:
+        result = subprocess.run(
+            ['rclone', 'copy', ckpt_path, f'{remote_name}:{drive_folder}/'],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"Checkpoint uploaded to Drive via rclone: {os.path.basename(ckpt_path)}")
+        else:
+            print(f"rclone upload failed: {result.stderr}")
+    except Exception as e:
+        print(f"rclone upload error: {e}")
 def load_buffer_into_ram(replay_buffer):
     processed_files.clear()
     if os.path.exists(LOCAL_DOWNLOAD_DIR):
@@ -145,20 +157,11 @@ def main():
         is_better = evaluate(champion, challenger,iteration=iteration)
 
         if is_better:
-                ckpt_name = f"checkpoint_iter_{iteration}.pt"
-            # Saves checkpoints locally inside Lightning Studio workspace
-                save_checkpoint(champion, f"./{ckpt_name}") 
-            
-                with open(VERSION_FILE, "w") as f:
-                        f.write(ckpt_name)
-                
-                print(f"Champion updated and saved locally as {ckpt_name}")
-                clean_old_checkpoints("./", keep_latest=3)
-            
-            # Use Git to automatically push the new version pointers to GitHub
-                os.system(f'git add {VERSION_FILE} {ckpt_name}')
-                os.system(f'git commit -m "checkpoint iteration {iteration}"')
-                os.system('git push')
+               ckpt_name = f"checkpoint_iter_{iteration}.pt"
+               save_checkpoint(champion, f"./{ckpt_name}")
+               save_checkpoint_to_drive(f"./{ckpt_name}")  # ← Drive backup
+               clean_old_checkpoints("./", keep_latest=3)
+               print(f"Champion updated: {ckpt_name}")
         else:
                 print("Champion unchanged")
                 estimated_elo = 800 + iteration * 60
