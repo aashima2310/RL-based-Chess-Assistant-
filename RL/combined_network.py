@@ -88,4 +88,5 @@ def alphazero_loss(policy_pred, value_pred, policy_target, value_target, model, 
     policy_loss = -(policy_target * torch.log(policy_pred + 1e-8)).sum(dim=-1).mean()
     value_loss = F.mse_loss(value_pred.squeeze(-1), value_target.squeeze(-1))
     l2_loss = sum(p.pow(2).sum() for p in model.parameters() if p.requires_grad)
-    return policy_loss + value_loss + l2_lambda * l2_loss
+    total = policy_loss + value_loss + l2_lambda * l2_loss
+    return total, policy_loss, value_loss
