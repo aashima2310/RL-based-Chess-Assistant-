@@ -22,14 +22,6 @@ from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
 processed_files = set()
-def unfreeze_backbone(self, lr_scale=0.1):
-        for param in self.backbone.parameters():
-            param.requires_grad = True
-        param_groups = [
-            {'params': self.backbone.parameters(), 'lr': Config.lr * lr_scale},
-            {'params': [p for n, p in self.named_parameters() if 'backbone' not in n]}
-        ]
-        return param_groups
 def clean_old_checkpoints(workspace_path, keep_latest=3):
     checkpoint_files = glob.glob(os.path.join(workspace_path, "checkpoint_iter_*.pt"))
     checkpoint_files.sort(key=os.path.getmtime)
@@ -110,19 +102,19 @@ def main():
     champion = champion.to(device)
     resumed = False
     if os.path.exists(VERSION_FILE):
-        try:
-            with open(VERSION_FILE, 'r') as f:
-                latest_ckpt_name = f.read().strip()
+            try:
+                    with open(VERSION_FILE, 'r') as f:
+                    latest_ckpt_name = f.read().strip()
             actual_ckpt_path = f"./{latest_ckpt_name}"
             if os.path.exists(actual_ckpt_path):
-                champion.load_state_dict(torch.load(actual_ckpt_path, map_location=device))
-                print(f"Resumed from existing local checkpoint: {latest_ckpt_name}")
-                resumed = True
+                    champion.load_state_dict(torch.load(actual_ckpt_path, map_location=device))
+                    print(f"Resumed from existing local checkpoint: {latest_ckpt_name}")
+                    resumed = True
         except Exception as e:
             print(f"Could not read local pointer file: {e}")
 
     if not resumed:
-        print("No dynamic checkpoint found, starting fresh with base NNUE weights")
+            print("No dynamic checkpoint found, starting fresh with base NNUE weights")
 
     trainer = Trainer(champion)
     replay_buffer = ReplayBuffer(max_size=50000)
@@ -134,13 +126,13 @@ def main():
         num_tuples = load_buffer_into_ram(replay_buffer)
 
         if num_tuples < Config.batch_size:
-            print(f"Not enough data yet ({num_tuples} tuples). Need at least {Config.batch_size}. Waiting 60s...")
-            time.sleep(60)
-            continue
+                print(f"Not enough data yet ({num_tuples} tuples). Need at least {Config.batch_size}. Waiting 60s...")
+                time.sleep(60)
+                continue
         if iteration == 3:
-            print(">>> Phase 2: Unfreezing backbone for fine-tuning!")
-            param_groups = unfreeze_backbone(champion, lr_scale=0.1)
-            trainer.optimizer = torch.optim.Adam(param_groups, lr=Config.lr)
+                print(">>> Phase 2: Unfreezing backbone for fine-tuning!")
+                param_groups = champion.unfreeze_backbone(lr_scale=0.1)  # class method
+                trainer.optimizer = torch.optim.Adam(param_groups, lr=Config.lr)
   
 
         loss = trainer.train(replay_buffer)
@@ -153,34 +145,28 @@ def main():
         is_better = evaluate(champion, challenger)
 
         if is_better:
-            ckpt_name = f"checkpoint_iter_{iteration}.pt"
+                ckpt_name = f"checkpoint_iter_{iteration}.pt"
             # Saves checkpoints locally inside Lightning Studio workspace
-            save_checkpoint(champion, f"./{ckpt_name}") 
+                save_checkpoint(champion, f"./{ckpt_name}") 
             
-            with open(VERSION_FILE, "w") as f:
-                f.write(ckpt_name)
+                with open(VERSION_FILE, "w") as f:
+                        f.write(ckpt_name)
                 
-            print(f"Champion updated and saved locally as {ckpt_name}")
-            clean_old_checkpoints("./", keep_latest=3)
+                print(f"Champion updated and saved locally as {ckpt_name}")
+                clean_old_checkpoints("./", keep_latest=3)
             
             # Use Git to automatically push the new version pointers to GitHub
-            os.system(f'git add {VERSION_FILE} {ckpt_name}')
-            os.system(f'git commit -m "checkpoint iteration {iteration}"')
-            os.system('git push')
+                os.system(f'git add {VERSION_FILE} {ckpt_name}')
+                os.system(f'git commit -m "checkpoint iteration {iteration}"')
+                os.system('git push')
         else:
-            print("Champion unchanged")
-
-        estimated_elo = 800 + iteration * 60
-        log(iteration, loss, estimated_elo, num_tuples)
-
-        if iteration == 100:
-            print("Phase 2: unfreezing backbone")
-            param_groups = champion.unfreeze_backbone(lr_scale=0.1)
-            trainer.optimizer = torch.optim.Adam(param_groups)
+                print("Champion unchanged")
+                estimated_elo = 800 + iteration * 60
+                log(iteration, loss, estimated_elo, num_tuples)
 
         iteration += 1
         time.sleep(30)
 
 
 if __name__ == "__main__":
-    main()
+        main()
