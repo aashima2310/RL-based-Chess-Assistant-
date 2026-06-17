@@ -23,8 +23,8 @@ class MCTS:
     def search(self, state):
      original_turn = state.turn
      board_fen_for_root = state.board_fen()
-     root = self.get_node(board_fen_for_root)
-     root.visit_count = 0
+     root = Node(self.game, self.args, chess.Board(board_fen_for_root))
+     self.nodes[board_fen_for_root] = root
     
      if root.policy is None:
          device = self.args.get('device', torch.device('cpu'))
@@ -54,8 +54,10 @@ class MCTS:
             policy_probs = (1 - epsilon) * policy_probs + epsilon * noise_full
 
          root.expand(policy_probs, root_value.item())
-
+     self._evaluate_node(root)
      for _ in range(self.args["num_searches"]):
+        leaves = []
+        paths = []
         node = root
         path = [node]
 
@@ -69,6 +71,8 @@ class MCTS:
                                               parent=node, action_taken=action)
             node = node.children[action]
             path.append(node)
+        leaves.append(node)
+        paths.append(path)
 
         value, is_terminal = self.game.get_value_and_terminated(node.state, node.action_taken)
 
