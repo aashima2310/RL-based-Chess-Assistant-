@@ -59,7 +59,8 @@ def evaluate(champion_network, challenger_network):
     champion_wins   = 0
 
     for game_num in range(Config.arena_games):
-
+        champion_mcts.nodes   = {}
+        challenger_mcts.nodes = {}
         if game_num % 2 == 0:
             result = play_match(game, champion_mcts, challenger_mcts)
         else:
