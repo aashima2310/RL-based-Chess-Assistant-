@@ -155,7 +155,7 @@ def main():
         challenger.load_state_dict(champion.state_dict())
         challenger = challenger.to(device)
 
-        is_better = evaluate(champion, challenger,iteration=iteration)
+        is_better = evaluate(champion, challenger)
 
         if is_better:
             ckpt_name = f"checkpoint_iter_{iteration}.pt"
