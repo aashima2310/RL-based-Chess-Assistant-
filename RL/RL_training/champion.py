@@ -48,8 +48,8 @@ def evaluate(champion_network, challenger_network):
         'device': next(champion_network.parameters()).device
     }
 
-    champion_mcts   = MCTS(game, args)
-    challenger_mcts = MCTS(game, args)
+    champion_mcts   = MCTS(game, args , champion_network)
+    challenger_mcts = MCTS(game, args , challenger_network)
   
     champion_mcts.network   = champion_network
     challenger_mcts.network = challenger_network
