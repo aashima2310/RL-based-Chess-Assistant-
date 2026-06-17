@@ -38,8 +38,8 @@ class Trainer:
             
             w_acc = torch.stack(w_accs).to(self.device)
             b_acc = torch.stack(b_accs).to(self.device)
-            policy_targets = torch.tensor(policies, dtype=torch.float32)
-            value_targets = torch.tensor(values, dtype=torch.float32).unsqueeze(1)
+            policy_targets = torch.tensor(policies, dtype=torch.float32).to(self.device)
+            value_targets = torch.tensor(values, dtype=torch.float32).unsqueeze(1).to(self.device)
 
             policy_preds, value_preds = self.network(w_acc, b_acc)
 
