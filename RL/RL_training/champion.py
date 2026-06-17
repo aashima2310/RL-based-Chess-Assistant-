@@ -37,10 +37,15 @@ def play_match(game, mcts1, mcts2):
 def evaluate(champion_network, challenger_network):
 
     game = Chess_game()
-
+    sims = Config.num_simulations
+    for threshold, count in sorted(Config.sim_schedule.items()):
+        if iteration >= threshold:
+            sims = count
     args = {
         'C': Config.c_puct,
-        'num_searches': 100
+        'num_searches': sims,        
+        'add_noise': False,          
+        'device': next(champion_network.parameters()).device
     }
 
     champion_mcts   = MCTS(game, args)
