@@ -11,8 +11,8 @@ class Config:
 
     num_episodes = 100
     temp_threshold = 10
-    batch_size = 64
-    lr = 0.001
+    batch_size = 512
+    lr = 2e-4
     epochs = 10
     arena_games = 20
     update_threshold = 0.55
