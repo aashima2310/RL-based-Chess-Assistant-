@@ -4,175 +4,160 @@ import time
 import sys
 import glob
 import torch
-import shutil
-import gdown
-import subprocess
+import numpy as np
+import csv
+import random
 
 sys.path.append('/teamspace/studios/this_studio/RL-based-Chess-Assistant-')
-FOLDER_ID = "1q6OC-jQTiWvTaudDCZzpWeBCErWZmkkO" 
-LOCAL_DOWNLOAD_DIR = './downloaded_worker_buffers'
-NNUE_PATH  = '/teamspace/studios/this_studio/RL-based-Chess-Assistant-/nnue.pth'
-VERSION_FILE = './latest_checkpoint_version.txt'
+
+DRIVE_PATH  = '/teamspace/studios/this_studio/drive/MyDrive/chess_rl'
+NNUE_PATH   = f'{DRIVE_PATH}/nnue.pth'
+CKPT_DRIVE  = f'{DRIVE_PATH}/checkpoint.pt'
+CKPT_LOCAL  = '/teamspace/studios/this_studio/RL-based-Chess-Assistant-/RL/checkpoint.pt'
+LOG_PATH    = f'{DRIVE_PATH}/training_log.csv'
 
 from RL.RL_training.trainer import Trainer
 from RL.RL_training.replay_buffer import ReplayBuffer
-from RL.RL_training.champion import evaluate
 from RL.combined_network import NNUE_AlphaZero as CombinedNetwork
-from RL.checkpoints import save_checkpoint, load_checkpoint
-from RL.training_stats import log
 from RL.config import Config
 from pretraining_nnue_code import NNUE
-processed_files = set()
-def clean_old_checkpoints(workspace_path, keep_latest=3):
-    checkpoint_files = glob.glob(os.path.join(workspace_path, "checkpoint_iter_*.pt"))
-    checkpoint_files.sort(key=os.path.getmtime)
-    if len(checkpoint_files) > keep_latest:
-        files_to_delete = checkpoint_files[:-keep_latest]
-        for file_path in files_to_delete:
-            try:
-                os.remove(file_path)
-                print(f"🧹 Storage Cleanup: Deleted old local checkpoint {os.path.basename(file_path)}")
-            except Exception as e:
-                print(f"Warning: Could not delete {file_path}: {e}")
-RCLONE_CONFIG = '/teamspace/studios/this_studio/rclone_config/rclone.conf'
-def save_checkpoint_to_drive(ckpt_path, remote_folder='gdrive:chess_checkpoints/'):
-    try:
-        result = subprocess.run(
-            ['rclone', '--config', RCLONE_CONFIG, 'copy', ckpt_path, remote_folder],
-            capture_output=True, text=True, timeout=60
-        )
-        if result.returncode == 0:
-            print(f"Checkpoint backed up to Drive: {os.path.basename(ckpt_path)}")
-        else:
-            print(f"Drive backup failed: {result.stderr}")
-    except Exception as e:
-        print(f"Drive backup error: {e}")
-def load_buffer_into_ram(replay_buffer):
-    processed_files.clear()
-    if os.path.exists(LOCAL_DOWNLOAD_DIR):
-        shutil.rmtree(LOCAL_DOWNLOAD_DIR)
-    os.makedirs(LOCAL_DOWNLOAD_DIR, exist_ok=True)
 
-    print("🔄 Downloading latest worker buffers from Google Drive Folder via gdown...")
-    try:
-        gdown.download_folder(
-            id=FOLDER_ID,
-            output=LOCAL_DOWNLOAD_DIR,
-            quiet=False,
-            use_cookies=False
-        )
-    except Exception as e:
-        print(f"Error downloading from Google Drive: {e}")
-        return len(replay_buffer.buffer)
 
-    buffer_files = glob.glob(os.path.join(LOCAL_DOWNLOAD_DIR, 'buffer_*.pkl'))
-
+def load_all_buffers(replay_buffer):
+    buffer_files = glob.glob(f'{DRIVE_PATH}/buffer*.pkl')
     if not buffer_files:
-        print("No buffer files found in the Drive folder yet, waiting for workers...")
-        return len(replay_buffer.buffer)
-
-    new_tuples_added = 0
+        print("No buffer files found. Waiting...")
+        return 0
+    print(f"Found {len(buffer_files)} buffer files")
     all_data = []
-
-    for path in buffer_files:
-        file_name = os.path.basename(path)
-        if file_name in processed_files:
-            continue
+    for path in sorted(buffer_files):
         try:
             with open(path, 'rb') as f:
                 data = pickle.load(f)
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, (tuple, list)) and len(item) == 3:
-                        all_data.append(item)
-                        new_tuples_added += 1
-            processed_files.add(file_name)
-            print(f"✅ Loaded {file_name}: {len(data)} tuples")
+            if isinstance(data, list) and len(data) > 0:
+                all_data.extend(data)
+                print(f"  {os.path.basename(path):35s} {len(data):>7} tuples")
         except Exception as e:
-            print(f"Skipping corrupt file {file_name}: {e}")
-            continue
+            print(f"  SKIP {os.path.basename(path)}: {e}")
+    if len(all_data) == 0:
+        return 0
+    if len(all_data) > 50000:
+        all_data = random.sample(all_data, 50000)
+    replay_buffer.buffer.clear()
+    replay_buffer.push(all_data)
+    print(f"TOTAL: {len(all_data)} tuples loaded")
+    return len(all_data)
 
-    for tuple_item in all_data:
-        try:
-            replay_buffer.push(tuple_item)
-        except TypeError:
-            replay_buffer.push(tuple_item[0], tuple_item[1], tuple_item[2])
 
-    print(f"TOTAL ACTIVE BUFFER SIZE IN RAM: {len(replay_buffer.buffer)} (Added {new_tuples_added} fresh tuples)")
-    shutil.rmtree(LOCAL_DOWNLOAD_DIR)
-    return len(replay_buffer.buffer)
+def load_checkpoint(champion, device):
+    if os.path.exists(CKPT_DRIVE):
+        champion.load_state_dict(torch.load(CKPT_DRIVE, map_location=device))
+        print("Resumed from DRIVE checkpoint")
+        return champion
+    if os.path.exists(CKPT_LOCAL):
+        champion.load_state_dict(torch.load(CKPT_LOCAL, map_location=device))
+        print("Resumed from LOCAL checkpoint")
+        return champion
+    print("No checkpoint found — starting fresh with NNUE weights")
+    return champion
+
+
+def save_checkpoint(champion):
+    torch.save(champion.state_dict(), CKPT_DRIVE)
+    torch.save(champion.state_dict(), CKPT_LOCAL)
+    print("Checkpoint saved to Drive + local")
+
+
+def log_progress(iteration, loss, policy_loss, value_loss, num_tuples):
+    file_exists = os.path.exists(LOG_PATH)
+    with open(LOG_PATH, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['iteration', 'loss', 'policy_loss',
+                              'value_loss', 'tuples'])
+        writer.writerow([iteration,
+                          round(float(loss), 5),
+                          round(float(policy_loss), 5),
+                          round(float(value_loss), 5),
+                          num_tuples])
+
+
+def get_resume_iteration():
+    if os.path.exists(LOG_PATH):
+        with open(LOG_PATH, 'r') as f:
+            rows = list(csv.reader(f))
+        if len(rows) > 1:
+            last_iter = int(rows[-1][0]) + 1
+            print(f"Resuming from iteration {last_iter}")
+            return last_iter
+    return 0
+
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    print(f"Device: {device}")
 
     nnue = NNUE(input_size=40960)
-    nnue.load_state_dict(torch.load(NNUE_PATH, map_location=device,weights_only=False))
+    nnue.load_state_dict(torch.load(NNUE_PATH, map_location=device))
     nnue.eval()
     print("Pretrained NNUE loaded!")
 
-    champion = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=True)
-    champion = champion.to(device)
-    resumed = False
-    if os.path.exists(VERSION_FILE):
-            try:
-                    with open(VERSION_FILE, 'r') as f:
-                    latest_ckpt_name = f.read().strip()
-            actual_ckpt_path = f"./{latest_ckpt_name}"
-            if os.path.exists(actual_ckpt_path):
-                    champion.load_state_dict(torch.load(actual_ckpt_path, map_location=device))
-                    print(f"Resumed from existing local checkpoint: {latest_ckpt_name}")
-                    resumed = True
-        except Exception as e:
-            print(f"Could not read local pointer file: {e}")
+    champion = CombinedNetwork(
+        pretrained_nnue=nnue,
+        num_moves=4672,
+        freeze_backbone=True
+    ).to(device)
 
-    if not resumed:
-            print("No dynamic checkpoint found, starting fresh with base NNUE weights")
+    champion = load_checkpoint(champion, device)
 
-    trainer = Trainer(champion)
+    trainer       = Trainer(champion)
     replay_buffer = ReplayBuffer(max_size=50000)
-    iteration = 0
+    iteration     = get_resume_iteration()
+
+    if iteration >= Config.unfreeze_at_iteration:
+        print("Resumed past unfreeze point — unfreezing backbone now")
+        param_groups = champion.unfreeze_backbone(lr_scale=0.1)
+        trainer.optimizer = torch.optim.Adam(param_groups)
 
     while True:
-        print(f"\n=== TRAINER: Iteration {iteration} ===")
+        print(f"\n{'='*55}")
+        print(f"  TRAINER Iteration {iteration}")
+        print(f"{'='*55}")
 
-        num_tuples = load_buffer_into_ram(replay_buffer)
+        num_tuples = load_all_buffers(replay_buffer)
 
         if num_tuples < Config.batch_size:
-                print(f"Not enough data yet ({num_tuples} tuples). Need at least {Config.batch_size}. Waiting 60s...")
-                time.sleep(60)
-                continue
-        if iteration == 3:
-                print(">>> Phase 2: Unfreezing backbone for fine-tuning!")
-                param_groups = champion.unfreeze_backbone(lr_scale=0.1)  # class method
-                trainer.optimizer = torch.optim.Adam(param_groups, lr=Config.lr)
-  
+            print(f"Need {Config.batch_size}, have {num_tuples}. Waiting 60s...")
+            time.sleep(60)
+            continue
 
-        loss = trainer.train(replay_buffer)
-        print(f"Training loss: {loss:.4f}")
+        result = trainer.train(replay_buffer)
 
-        challenger = CombinedNetwork(pretrained_nnue=nnue, num_moves=4672, freeze_backbone=False)
-        challenger.load_state_dict(champion.state_dict())
-        challenger = challenger.to(device)
+        if result is None:
+            print("Training returned None")
+            time.sleep(30)
+            continue
 
-        is_better = evaluate(champion, challenger)
-
-        if is_better:
-            ckpt_name = f"checkpoint_iter_{iteration}.pt"
-            save_checkpoint(champion, f"./{ckpt_name}")
-            save_checkpoint_to_drive(f"./{ckpt_name}")  # ← reliable Drive backup
-            with open(VERSION_FILE, "w") as f:
-                f.write(ckpt_name)
-            print(f"Champion updated: {ckpt_name}")
-            clean_old_checkpoints("./", keep_latest=3)
+        if isinstance(result, tuple):
+            loss, policy_loss, value_loss = result
         else:
-            print("Champion unchanged")
-            stimated_elo = 800 + iteration * 60
-            log(iteration, loss, estimated_elo, num_tuples)
+            loss        = result
+            policy_loss = 0.0
+            value_loss  = 0.0
+
+        print(f"Total loss: {loss:.5f}")
+
+        save_checkpoint(champion)
+        log_progress(iteration, loss, policy_loss, value_loss, num_tuples)
+
+        if iteration == Config.unfreeze_at_iteration:
+            print("Phase 2: unfreezing backbone")
+            param_groups = champion.unfreeze_backbone(lr_scale=0.1)
+            trainer.optimizer = torch.optim.Adam(param_groups)
 
         iteration += 1
         time.sleep(30)
 
 
 if __name__ == "__main__":
-        main()
+    main()
