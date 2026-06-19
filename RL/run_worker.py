@@ -6,14 +6,14 @@ import torch
 import chess
 import sys
 import fcntl
+import csv
 
 sys.path.append('/content/RL-based-Chess-Assistant-')
-
 from google.colab import drive
 drive.mount('/content/drive')
 
 DRIVE_PATH  = '/content/drive/MyDrive/chess_rl'
-worker_id = str(uuid.uuid4())[:8]
+worker_id   = str(uuid.uuid4())[:8]
 BUFFER_PATH = f'{DRIVE_PATH}/buffer_{worker_id}.pkl'
 CKPT_PATH   = f'{DRIVE_PATH}/checkpoint.pt'
 NNUE_PATH   = f'{DRIVE_PATH}/nnue.pth'
@@ -26,13 +26,11 @@ from pretraining_nnue_code import NNUE
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-
 def load_buffer():
     if os.path.exists(BUFFER_PATH):
         with open(BUFFER_PATH, 'rb') as f:
             return pickle.load(f)
     return []
-
 
 def save_buffer(data):
     existing = load_buffer()
@@ -47,7 +45,6 @@ def save_buffer(data):
     os.replace(tmp_path, BUFFER_PATH)
     print(f"Buffer saved: {len(existing)} tuples")
 
-
 def load_latest_checkpoint(network):
     if os.path.exists(CKPT_PATH):
         network.load_state_dict(torch.load(CKPT_PATH, map_location=device))
@@ -55,7 +52,6 @@ def load_latest_checkpoint(network):
     else:
         print("No checkpoint yet — using pretrained NNUE weights")
     return network
-
 
 def build_model():
     nnue = NNUE(input_size=40960)
@@ -67,32 +63,41 @@ def build_model():
     network.eval()
     return network
 
+def get_trainer_iteration():
+    log_path = f'{DRIVE_PATH}/logs/training_log.csv'
+    try:
+        if os.path.exists(log_path):
+            with open(log_path, 'r') as f:
+                rows = list(csv.reader(f))
+            if len(rows) > 1:
+                iteration = int(rows[-1][0])
+                print(f"Resuming from trainer iteration {iteration}")
+                return iteration
+    except Exception as e:
+        print(f"Could not read training log: {e}, starting from 0")
+    return 0
 
 def main():
     network = build_model()
-
     args = {
         'C': Config.c_puct,
         'num_searches': Config.num_simulations,
-        'device': device,             
+        'device': device,
         'add_noise': True,
         'dirichlet_alpha': 0.3,
         'dirichlet_epsilon': 0.25
     }
 
-    iteration = 0
+    iteration = get_trainer_iteration()
 
     while True:
         print(f"\n--- Worker iteration {iteration} ---")
-
         network = load_latest_checkpoint(network)
         network.eval()
-
         game_data = run_self_play(network, iteration)
         print(f"Generated {len(game_data)} tuples")
 
         if len(game_data) > 0:
-                        
             try:
                 save_buffer(game_data)
             except Exception as e:
@@ -104,7 +109,6 @@ def main():
 
         iteration += 1
         time.sleep(120)
-
 
 if __name__ == "__main__":
     main()
