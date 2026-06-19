@@ -1,5 +1,5 @@
 class Config:
-    num_simulations    = 100
+    num_simulations    = 200
     c_puct              = 1.5
     sim_schedule = {0: 100, 5: 200, 15: 400, 25: 800} 
     unfreeze_at_iteration = 100
