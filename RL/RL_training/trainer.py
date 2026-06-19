@@ -6,7 +6,6 @@ from chess_env.features import HalfKPExtractor
 from config import Config
 from combined_network import alphazero_loss
 
-
 class Trainer:
     def __init__(self, network):
         self.network = network
@@ -17,7 +16,6 @@ class Trainer:
             {'params': self.network.policy_head.parameters(), 'lr': Config.lr},
             {'params': self.network.value_head.parameters(),  'lr': Config.lr * 0.5},
         ], weight_decay=1e-4)
-
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
             T_max=Config.num_iterations if hasattr(Config, 'num_iterations') else 200,
@@ -53,7 +51,7 @@ class Trainer:
                 np.array(values), dtype=torch.float32
             ).unsqueeze(1).to(self.device, non_blocking=True)
 
-            policy_preds, value_preds = self.network(w_acc, b_acc)
+            policy_preds, value_preds = self.network(w_acc, b_acc, board=list(states))
 
             loss, policy_loss, value_loss = alphazero_loss(
                 policy_preds, value_preds,
@@ -71,7 +69,6 @@ class Trainer:
             total_value  += value_loss.item()
 
         self.scheduler.step()
-
         avg_loss   = total_loss   / Config.epochs
         avg_policy = total_policy / Config.epochs
         avg_value  = total_value  / Config.epochs
@@ -81,4 +78,4 @@ class Trainer:
               f"Value loss: {avg_value:.4f} | "
               f"LR: {current_lr:.6f}")
 
-        return avg_loss
+        return avg_loss, avg_policy, avg_value
