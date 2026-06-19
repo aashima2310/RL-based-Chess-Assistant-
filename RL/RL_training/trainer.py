@@ -12,7 +12,7 @@ class Trainer:
         self.network = network
         self.device = next(network.parameters()).device
         self.halfkp_extractor = HalfKPExtractor()
-        self.optimizer = optim.Adam([
+        self.optimizer = optim.AdamW([
             {'params': self.network.trunk.parameters(),       'lr': Config.lr},
             {'params': self.network.policy_head.parameters(), 'lr': Config.lr},
             {'params': self.network.value_head.parameters(),  'lr': Config.lr * 0.5},
