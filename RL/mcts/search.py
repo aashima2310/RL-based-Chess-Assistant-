@@ -74,15 +74,6 @@ class MCTS:
                 else:
                     p = np.zeros(self.game.action_size)
 
-            if self.args.get('add_noise', False):
-                legal = np.where(node.valid_moves == 1)[0]
-                if len(legal) > 0:
-                    alpha    = self.args.get('dirichlet_alpha', 0.3)
-                    epsilon  = self.args.get('dirichlet_epsilon', 0.25)
-                    noise    = np.random.dirichlet([alpha] * len(legal))
-                    noise_full = np.zeros_like(p)
-                    noise_full[legal] = noise
-                    p = (1 - epsilon) * p + epsilon * noise_full
 
             node.value = values[i].item()
             node.expand(p, node.value)
