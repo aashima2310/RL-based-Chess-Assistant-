@@ -80,7 +80,7 @@ class MCTS:
 
 
     def search(self, state):
-        root = Node(self.game, self.args, chess.Board(state.board_fen()))
+        root = Node(self.game, self.args, chess.Board(state.fen()))
         policy_probs, root_value = self._evaluate_node(root)
         if self.args.get('add_noise', True):
             alpha   = self.args.get('dirichlet_alpha', 0.3)
