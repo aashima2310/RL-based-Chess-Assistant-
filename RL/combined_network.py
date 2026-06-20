@@ -66,7 +66,7 @@ class NNUE_AlphaZero(nn.Module):
                 if w_acc.dim() == 2:
                     legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
         input_bias = self.backbone.input_bias.to(device)
-
+        input_weights=self.backbone.input_weights.to(device)
         w_processed = torch.matmul(w_acc, input_weights) + input_bias
         b_processed = torch.matmul(b_acc, input_weights) +input_bias
         x = torch.cat([w_processed, b_processed], dim=1)
