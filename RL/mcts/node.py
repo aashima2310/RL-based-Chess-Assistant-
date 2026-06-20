@@ -53,5 +53,3 @@ class Node:
     def back_propagate(self, value):
         self.value_sum += value
         self.visit_count += 1
-        if self.parent is not None:
-            self.parent.back_propagate(self.game.get_opponent_value(value))
