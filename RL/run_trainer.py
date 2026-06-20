@@ -120,7 +120,7 @@ def main():
     if iteration >= Config.unfreeze_at_iteration:
         print("Resumed past unfreeze point — unfreezing backbone now")
         param_groups = champion.unfreeze_backbone(lr_scale=0.1)
-        trainer.optimizer = torch.optim.Adam(param_groups, weight_decay=1e-4)
+        trainer.optimizer = torch.optim.AdamW(param_groups, weight_decay=1e-4)
         trainer.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             trainer.optimizer,
             T_max=Config.num_iterations,
@@ -161,7 +161,7 @@ def main():
         if iteration == Config.unfreeze_at_iteration:
             print("Phase 2: unfreezing backbone")
             param_groups = champion.unfreeze_backbone(lr_scale=0.1)
-            trainer.optimizer = torch.optim.Adam(param_groups)
+            trainer.optimizer = torch.optim.AdamW(param_groups, weight_decay=1e-4)
             trainer.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 trainer.optimizer,
                 T_max=Config.num_iterations,
