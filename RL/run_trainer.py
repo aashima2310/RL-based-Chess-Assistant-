@@ -63,9 +63,12 @@ def load_checkpoint(champion, device):
 
 
 def save_checkpoint(champion):
-    torch.save(champion.state_dict(), CKPT_DRIVE)
-    torch.save(champion.state_dict(), CKPT_LOCAL)
+    for path in (CKPT_DRIVE, CKPT_LOCAL):
+        tmp_path = path + ".tmp"
+        torch.save(champion.state_dict(), tmp_path)
+        os.replace(tmp_path, path)
     print("Checkpoint saved to Drive + local")
+    
 
 
 def log_progress(iteration, loss, policy_loss, value_loss, num_tuples):
