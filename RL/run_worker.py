@@ -64,7 +64,7 @@ def build_model():
     return network
 
 def get_trainer_iteration():
-    log_path = f'{DRIVE_PATH}/logs/training_log.csv'
+    log_path = f'{DRIVE_PATH}/training_log.csv'
     try:
         if os.path.exists(log_path):
             with open(log_path, 'r') as f:
