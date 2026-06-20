@@ -29,7 +29,7 @@ class Node:
                 ucb = -np.inf
             elif action in self.children:
                 child = self.children[action]
-                q_value = child.value_sum / child.visit_count if child.visit_count > 0 else 0
+                q_value = -child.value_sum / child.visit_count if child.visit_count > 0 else 0
                 ucb = q_value + self.args['C'] * self.policy[action] * (math.sqrt(self.visit_count) / (1 + child.visit_count))
             else:
                 ucb = self.args['C'] * self.policy[action] * math.sqrt(self.visit_count)
