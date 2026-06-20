@@ -95,6 +95,5 @@ class NNUE_AlphaZero(nn.Module):
 def alphazero_loss(policy_pred, value_pred, policy_target, value_target, model, l2_lambda=1e-4):
     policy_loss = -(policy_target * torch.log(policy_pred + 1e-8)).sum(dim=-1).mean()
     value_loss = F.mse_loss(value_pred.squeeze(-1), value_target.squeeze(-1))
-    l2_loss = sum(p.pow(2).sum() for p in model.parameters() if p.requires_grad)
-    total = policy_loss + value_loss + l2_lambda * l2_loss
+    total = policy_loss + value_loss 
     return total, policy_loss, value_loss
