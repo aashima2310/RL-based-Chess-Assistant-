@@ -56,13 +56,13 @@ class NNUE_AlphaZero(nn.Module):
                 for b in board:
                     m = torch.zeros(4672, dtype=torch.bool, device=device)
                     for move in b.legal_moves:
-                        m[halfkp_extractor.move_to_idx(move)] = True
+                        m[move_to_index(move)] = True 
                     masks.append(m)
                 legal_move_mask = torch.stack(masks) 
             else:
                 legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=device)
                 for move in board.legal_moves:
-                    legal_move_mask[halfkp_extractor.move_to_idx(move)] = True
+                    legal_move_mask[move_to_index(move)] = True
                 if w_acc.dim() == 2:
                     legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
         input_bias = self.backbone.input_bias.to(device)
