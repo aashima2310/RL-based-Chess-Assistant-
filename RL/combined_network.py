@@ -49,6 +49,7 @@ class NNUE_AlphaZero(nn.Module):
         self.trunk.to(device)
         self.policy_head.to(device)
         self.value_head.to(device)
+
         legal_move_mask = None
         if board is not None:
             if isinstance(board, list):
@@ -56,19 +57,21 @@ class NNUE_AlphaZero(nn.Module):
                 for b in board:
                     m = torch.zeros(4672, dtype=torch.bool, device=device)
                     for move in b.legal_moves:
-                        m[move_to_index(move)] = True 
+                        # uses the SAME encoder that generated training targets
+                        m[halfkp_extractor.move_to_idx(move)] = True
                     masks.append(m)
-                legal_move_mask = torch.stack(masks) 
+                legal_move_mask = torch.stack(masks)
             else:
                 legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=device)
                 for move in board.legal_moves:
-                    legal_move_mask[move_to_index(move)] = True
+                    legal_move_mask[halfkp_extractor.move_to_idx(move)] = True
                 if w_acc.dim() == 2:
                     legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
+
         input_bias = self.backbone.input_bias.to(device)
-        input_weights=self.backbone.input_weights.to(device)
+        input_weights = self.backbone.input_weights.to(device)
         w_processed = torch.matmul(w_acc, input_weights) + input_bias
-        b_processed = torch.matmul(b_acc, input_weights) +input_bias
+        b_processed = torch.matmul(b_acc, input_weights) + input_bias
         x = torch.cat([w_processed, b_processed], dim=1)
         x = self.backbone.clipped_relu(x)
         x = self.backbone.clipped_relu(self.backbone.l2(x))
@@ -95,5 +98,5 @@ class NNUE_AlphaZero(nn.Module):
 def alphazero_loss(policy_pred, value_pred, policy_target, value_target, model, l2_lambda=1e-4):
     policy_loss = -(policy_target * torch.log(policy_pred + 1e-8)).sum(dim=-1).mean()
     value_loss = F.mse_loss(value_pred.squeeze(-1), value_target.squeeze(-1))
-    total = policy_loss + value_loss 
+    total = policy_loss + value_loss
     return total, policy_loss, value_loss
