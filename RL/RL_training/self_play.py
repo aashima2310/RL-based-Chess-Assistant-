@@ -43,19 +43,18 @@ def play_one_game(game, mcts, network):
 
         state = game.get_next_state(state, action)
         value, is_terminal = game.get_value_and_terminated(state, action)
-
         if is_terminal:
+            winner_player = player  
             return_data = []
             for hist_state, hist_probs, hist_player in training_data:
                 if value == 0:
                     hist_value = 0
-                elif hist_player == player:
+                elif hist_player == winner_player:
                     hist_value = value
                 else:
                     hist_value = game.get_opponent_value(value)
                 return_data.append((hist_state, hist_probs, hist_value))
             return return_data
-
         player = game.get_opponent(player)
 
 
