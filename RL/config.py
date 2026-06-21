@@ -1,7 +1,7 @@
 class Config:
     num_simulations    = 200
     c_puct              = 1.5
-    sim_schedule = {0: 100, 5: 200, 15: 400, 25: 800} 
+    sim_schedule = {0: 200} 
     unfreeze_at_iteration = 100
     num_episodes        = 10
     temp_threshold       = 10
