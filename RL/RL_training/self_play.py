@@ -82,6 +82,10 @@ def run_self_play(network, iteration=0, args=None):
         print(f"Episode {episode + 1}/{Config.num_episodes}")
         mcts = MCTS(game, args, network)      
         game_data = play_one_game(game, mcts, network)
+        if len(game_data) >= 10:   
+            all_data.extend(game_data)
+        else:
+            print(f"Skipped short game ({len(game_data)} positions)")
         all_data.extend(game_data)
         del mcts                            
         gc.collect()                        
