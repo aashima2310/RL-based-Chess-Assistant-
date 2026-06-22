@@ -3,7 +3,7 @@ class Config:
     c_puct              = 1.5
     sim_schedule = {0: 200} 
     unfreeze_at_iteration = 100
-    num_episodes        = 10
+    num_episodes        = 6
     temp_threshold       = 10
     batch_size           = 256
     lr                   = 0.003
