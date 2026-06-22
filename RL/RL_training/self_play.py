@@ -2,15 +2,14 @@ import numpy as np
 import chess
 import sys
 import torch
+import gc
 sys.path.append('/content/RL-based-Chess-Assistant-')
-
 from RL.chess_env.board import Chess_game
 from RL.mcts.search import MCTS
 from RL.config import Config
 from RL.chess_env.features import HalfKPExtractor
 
 halfkp_extractor = HalfKPExtractor()
-
 
 def play_one_game(game, mcts, network):
     state = game.get_initial_state()
@@ -43,8 +42,9 @@ def play_one_game(game, mcts, network):
 
         state = game.get_next_state(state, action)
         value, is_terminal = game.get_value_and_terminated(state, action)
+
         if is_terminal:
-            winner_player = player  
+            winner_player = player
             return_data = []
             for hist_state, hist_probs, hist_player in training_data:
                 if value == 0:
@@ -55,6 +55,7 @@ def play_one_game(game, mcts, network):
                     hist_value = game.get_opponent_value(value)
                 return_data.append((hist_state, hist_probs, hist_value))
             return return_data
+
         player = game.get_opponent(player)
 
 
@@ -76,19 +77,19 @@ def run_self_play(network, iteration=0, args=None):
         'device': device
     }
 
-    import gc
     all_data = []
     for episode in range(Config.num_episodes):
         print(f"Episode {episode + 1}/{Config.num_episodes}")
-        mcts = MCTS(game, args, network)      
+        mcts = MCTS(game, args, network)
         game_data = play_one_game(game, mcts, network)
-        if len(game_data) >= 10:   
-            all_data.extend(game_data)
+
+        if len(game_data) >= 10:
+            all_data.extend(game_data) 
         else:
             print(f"Skipped short game ({len(game_data)} positions)")
-        all_data.extend(game_data)
-        del mcts                            
-        gc.collect()                        
-        torch.cuda.empty_cache()             
+
+        del mcts
+        gc.collect()
+        torch.cuda.empty_cache()
 
     return all_data
