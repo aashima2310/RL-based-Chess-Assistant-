@@ -1,102 +1,118 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import sys
 import os
-repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(repo_path)
+import sys
+sys.path.append('/content/repo')
 from RL.chess_env.features import HalfKPExtractor
 
-halfkp_extractor = HalfKPExtractor()
+_extractor = HalfKPExtractor()
+
+
+class NNUE(nn.Module):
+    def __init__(self, input_size=40960):
+        super().__init__()
+        self.input_weights = nn.Parameter(torch.randn(input_size, 512) * 0.01)
+        self.input_bias = nn.Parameter(torch.zeros(512))
+        self.l2 = nn.Linear(1024, 32)
+        self.l3 = nn.Linear(32, 32)
+        self.l4 = nn.Linear(32, 1)
+
+    def clipped_relu(self, x):
+        return torch.clamp(x, min=0, max=1)
+
+    def refresh_accumulator(self, active_features: list) -> torch.Tensor:
+        acc = self.input_bias.clone()
+        for i in active_features:
+            acc = acc + self.input_weights[i]
+        return acc
+
+    def forward_features(self, w_acc: torch.Tensor, b_acc: torch.Tensor) -> torch.Tensor:
+        if w_acc.dim() == 1:
+            w_acc = w_acc.unsqueeze(0)
+        if b_acc.dim() == 1:
+            b_acc = b_acc.unsqueeze(0)
+        x = torch.cat([w_acc, b_acc], dim=1)
+        x = self.clipped_relu(x)
+        x = self.clipped_relu(self.l2(x))
+        x = self.clipped_relu(self.l3(x))   # (B, 32)
+        return x
 
 
 class NNUE_AlphaZero(nn.Module):
-    def __init__(self, pretrained_nnue, num_moves=4672, freeze_backbone=True):
+    """
+    Matches your checkpoint exactly:
+      backbone.input_weights, backbone.input_bias, backbone.l2/.l3/.l4
+      trunk.weight (128,32), trunk.bias        <- plain Linear, no Sequential
+      policy_head.0 (256,128), policy_head.2 (4672,256)
+      value_head.0 (64,128), value_head.2 (1,64)  + Tanh
+    Legal-move masking is applied INSIDE forward(), before softmax.
+    """
+    def __init__(self, input_size=40960, policy_size=4672):
         super().__init__()
-        self.backbone = pretrained_nnue
-        self.trunk = nn.Linear(32, 128)
+        self.backbone = NNUE(input_size=input_size)
+
+        self.trunk = nn.Linear(32, 128)   # plain Linear to match checkpoint keys
+
         self.policy_head = nn.Sequential(
             nn.Linear(128, 256),
             nn.ReLU(),
-            nn.Linear(256, num_moves)
+            nn.Linear(256, policy_size),
         )
         self.value_head = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
-            nn.Tanh()
+            nn.Tanh(),
         )
-        if freeze_backbone:
-            self._freeze_backbone()
 
-    def _freeze_backbone(self):
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+    def _build_legal_mask_batch(self, boards, device):
+        masks = []
+        for b in boards:
+            m = _extractor.get_legal_moves(b)  # (4672,) float32, 1.0 = legal
+            masks.append(m.bool())
+        return torch.stack(masks).to(device)
 
-    def unfreeze_backbone(self, lr_scale=0.1):
-        for param in self.backbone.parameters():
-            param.requires_grad = True
-        return [
-            {'params': self.backbone.parameters(),   'lr': 1e-4 * lr_scale},
-            {'params': self.trunk.parameters(),       'lr': 1e-4},
-            {'params': self.policy_head.parameters(), 'lr': 1e-4},
-            {'params': self.value_head.parameters(),  'lr': 1e-4},
-        ]
+    def forward(self, w_acc: torch.Tensor, b_acc: torch.Tensor, board=None):
+        feats = self.backbone.forward_features(w_acc, b_acc)   # (B, 32)
+        trunk_out = F.relu(self.trunk(feats))                   # (B, 128)
 
-    def forward(self, w_acc, b_acc, board=None):
-        device = w_acc.device
-        self.backbone.to(device)
-        self.trunk.to(device)
-        self.policy_head.to(device)
-        self.value_head.to(device)
+        policy_logits = self.policy_head(trunk_out)              # (B, 4672)
+        value = self.value_head(trunk_out)                       # (B, 1)
 
-        legal_move_mask = None
         if board is not None:
-            if isinstance(board, list):
-                masks = []
-                for b in board:
-                    m = torch.zeros(4672, dtype=torch.bool, device=device)
-                    for move in b.legal_moves:
-                        # uses the SAME encoder that generated training targets
-                        m[halfkp_extractor.move_to_idx(move)] = True
-                    masks.append(m)
-                legal_move_mask = torch.stack(masks)
-            else:
-                legal_move_mask = torch.zeros(4672, dtype=torch.bool, device=device)
-                for move in board.legal_moves:
-                    legal_move_mask[halfkp_extractor.move_to_idx(move)] = True
-                if w_acc.dim() == 2:
-                    legal_move_mask = legal_move_mask.unsqueeze(0).expand(w_acc.size(0), -1)
+            mask = self._build_legal_mask_batch(board, policy_logits.device)
+            policy_logits = policy_logits.masked_fill(~mask, -1e9)
 
-        input_bias = self.backbone.input_bias.to(device)
-        input_weights = self.backbone.input_weights.to(device)
-        w_processed = torch.matmul(w_acc, input_weights) + input_bias
-        b_processed = torch.matmul(b_acc, input_weights) + input_bias
-        x = torch.cat([w_processed, b_processed], dim=1)
-        x = self.backbone.clipped_relu(x)
-        x = self.backbone.clipped_relu(self.backbone.l2(x))
-        x = self.backbone.clipped_relu(self.backbone.l3(x))
+        policy_probs = F.softmax(policy_logits, dim=-1)
+        return policy_probs, value
 
-        trunk = F.relu(self.trunk(x))
+    def save(self, path, optimizer=None, scheduler=None, epoch=None, batch=None, best_val=None):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        ckpt = {"model_state": self.state_dict()}
+        if optimizer is not None: ckpt["optimizer_state"] = optimizer.state_dict()
+        if scheduler is not None: ckpt["scheduler_state"] = scheduler.state_dict()
+        if epoch is not None: ckpt["epoch"] = epoch
+        if batch is not None: ckpt["batch"] = batch
+        if best_val is not None: ckpt["best_val"] = best_val
+        torch.save(ckpt, path)
+        print(f"Checkpoint saved to {path}")
 
-        policy_logits = self.policy_head(trunk)
-        if legal_move_mask is not None:
-            policy_logits = policy_logits.masked_fill(~legal_move_mask, -1e9)
-        policy = F.softmax(policy_logits, dim=-1)
-
-        value = self.value_head(trunk)
-
-        return policy, value
-
-    def refresh_accumulator(self, active_features):
-        return self.backbone.refresh_accumulator(active_features)
-
-    def update_accumulator(self, accumulator, added, removed):
-        return self.backbone.update_accumulator(accumulator, added, removed)
+    def load_weights(self, path, device="cpu"):
+        ckpt = torch.load(path, map_location=device)
+        state_dict = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
+        missing, unexpected = self.load_state_dict(state_dict, strict=False)
+        if missing: print("MISSING keys:", missing)
+        if unexpected: print("UNEXPECTED keys:", unexpected)
+        return ckpt
 
 
-def alphazero_loss(policy_pred, value_pred, policy_target, value_target, model, l2_lambda=1e-4):
-    policy_loss = -(policy_target * torch.log(policy_pred + 1e-8)).sum(dim=-1).mean()
-    value_loss = F.mse_loss(value_pred.squeeze(-1), value_target.squeeze(-1))
-    total = policy_loss + value_loss
-    return total, policy_loss, value_loss
+def alphazero_loss(policy_preds, value_preds, policy_targets, value_targets, model=None, l2_lambda=1e-4):
+    eps = 1e-8
+    policy_loss = -(policy_targets * torch.log(policy_preds + eps)).sum(dim=1).mean()
+    value_loss = F.mse_loss(value_preds, value_targets)
+    l2_reg = 0.0
+    if model is not None and l2_lambda > 0:
+        l2_reg = l2_lambda * sum((p ** 2).sum() for p in model.parameters() if p.requires_grad)
+    total_loss = policy_loss + value_loss + l2_reg
+    return total_loss, policy_loss, value_loss
