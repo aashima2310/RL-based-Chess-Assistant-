@@ -1,6 +1,6 @@
 import numpy as np
 from chess_env.board import Chess_game
-from mcts.search import MCTS
+from MCTS_new import MCTS
 from config import Config
 
 
