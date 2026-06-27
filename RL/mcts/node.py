@@ -49,10 +49,8 @@ class Node:
             return None
         return best_child
 
-    def expand(self, policy_probs, value):
-        self.policy = policy_probs
-        self.value_sum = value
-        self.visit_count = 1
+    def expand(self, policy_probs, value=None):
+    self.policy = policy_probs
 
     def back_propagate(self, value):
         self.value_sum += value
