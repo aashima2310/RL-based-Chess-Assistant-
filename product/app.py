@@ -1,15 +1,3 @@
-"""
-app.py — Streamlit Frontend
------------------------------
-Covers Pipeline 2A (PGN upload + analysis display),
-Pipeline 2B (Play Against Engine),
-Pipeline 3 (puzzle recommendations),
-and Pipeline 4 frontend wiring (Coach Chat UI + context passing).
-
-Run with: streamlit run product/app.py
-Make sure backend is running: python -m uvicorn backend.main:app --reload --port 8000
-"""
-
 import streamlit as st
 import requests
 import chess
@@ -20,14 +8,12 @@ import base64
 
 API_URL = "http://localhost:8000"
 
-# ── Page config ──────────────────────────────────────────────
 st.set_page_config(
     page_title="ChessRL — Your Personal Chess Coach",
     page_icon="♟",
     layout="wide",
 )
 
-# ── Helper function for Pipeline 2B chat context ─────────────
 def build_play_engine_context():
     """
     Builds context from the Play Engine page.
@@ -51,7 +37,6 @@ def build_play_engine_context():
     }
 
 
-# ── Session state init ───────────────────────────────────────
 if "user_id" not in st.session_state:
     st.session_state.user_id = "default_user"
 if "game_id" not in st.session_state:
@@ -67,7 +52,6 @@ if "chatbot_opening" not in st.session_state:
 if "current_move_idx" not in st.session_state:
     st.session_state.current_move_idx = 0
 
-# ── Pipeline 2B session state ────────────────────────────────
 if "play_fen" not in st.session_state:
     st.session_state.play_fen = chess.Board().fen()
 if "play_history" not in st.session_state:
@@ -75,7 +59,6 @@ if "play_history" not in st.session_state:
 if "play_difficulty" not in st.session_state:
     st.session_state.play_difficulty = "Easy"
 
-# ── Pipeline 4 frontend context state ────────────────────────
 if "chat_context_source" not in st.session_state:
     st.session_state.chat_context_source = None
 
@@ -86,7 +69,6 @@ if "chat_thinking" not in st.session_state:
     st.session_state.chat_thinking = False
 
 
-# ── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
     st.title("♟ ChessRL")
     st.caption("RL-Powered Chess Coach")
@@ -101,10 +83,6 @@ with st.sidebar:
     st.caption(f"Logged in as: `{st.session_state.user_id}`")
 
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 1 — PIPELINE 2A: PGN UPLOAD + ANALYSIS
-# ════════════════════════════════════════════════════════════════
-
 if page == "📤 Analyze Game":
     st.title("📤 Analyze Your Game")
     st.caption("Upload a PGN to get move-by-move analysis, mistake classification, and coaching feedback.")
@@ -112,7 +90,6 @@ if page == "📤 Analyze Game":
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        # ── PGN Input ────────────────────────────────────────
         st.subheader("Upload PGN")
         pgn_input = st.text_area(
             "Paste your PGN here",
@@ -128,7 +105,7 @@ if page == "📤 Analyze Game":
 
         analyze_btn = st.button("🔍 Analyze Game", type="primary", use_container_width=True)
 
-    # ── Run Analysis ─────────────────────────────────────────
+    
     if analyze_btn and pgn_input.strip():
         with st.spinner("Analyzing your game... (this takes 10–30s depending on game length)"):
             try:
@@ -159,7 +136,7 @@ if page == "📤 Analyze Game":
     elif analyze_btn:
         st.warning("Please paste a PGN first.")
 
-    # ── Display Analysis Results ─────────────────────────────
+    
     if st.session_state.analysis:
         analysis = st.session_state.analysis
         summary = analysis["summary"]
@@ -167,7 +144,7 @@ if page == "📤 Analyze Game":
 
         st.divider()
 
-        # Summary metrics
+        
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("🔴 Blunders", summary["blunders"])
         m2.metric("🟠 Mistakes", summary["mistakes"])
@@ -196,7 +173,7 @@ if page == "📤 Analyze Game":
                 if st.button("End ⏭"):
                     st.session_state.current_move_idx = len(moves) - 1
 
-            # Render board as SVG
+            
             current_idx = st.session_state.current_move_idx
             if current_idx < len(moves):
                 current_move = moves[current_idx]
@@ -212,7 +189,7 @@ if page == "📤 Analyze Game":
                 except Exception as e:
                     st.error(f"Board error: {e}")
 
-            # Current move info box
+            
             if current_idx < len(moves):
                 m = moves[current_idx]
                 color = {
@@ -231,7 +208,7 @@ if page == "📤 Analyze Game":
         with col_moves:
             st.subheader("Move List")
 
-            # Color-coded move list
+           
             for i, m in enumerate(moves):
                 color_map = {
                     "Blunder": "🔴",
@@ -249,7 +226,7 @@ if page == "📤 Analyze Game":
                     st.session_state.current_move_idx = i
                     st.rerun()
 
-        # Weakness summary
+        
         st.divider()
         st.subheader("🎯 Weakness Summary")
         weakness_cols = st.columns(len(summary["mistake_counts"]))
@@ -261,9 +238,6 @@ if page == "📤 Analyze Game":
         st.warning(f"**Primary weakness this game:** {primary} — see Puzzles tab for targeted training")
 
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 2B — USER PLAYS AGAINST ENGINE
-# ════════════════════════════════════════════════════════════════
 
 elif page == "♟ Play Engine":
     st.title("♟ Play Against Engine")
@@ -410,9 +384,7 @@ elif page == "♟ Play Engine":
             st.rerun()
 
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 2 — PIPELINE 3: PUZZLE RECOMMENDATIONS
-# ════════════════════════════════════════════════════════════════
+
 
 elif page == "🧩 Puzzles":
     st.title("🧩 Recommended Puzzles")
@@ -487,7 +459,7 @@ elif page == "🧩 Puzzles":
                 if puzzle.get("url"):
                     st.markdown(f"[Play on Lichess ↗]({puzzle['url']})")
 
-    # Refresh puzzles button
+    
     st.divider()
     if st.button("🔄 Get New Puzzles", use_container_width=True):
         try:
@@ -502,9 +474,7 @@ elif page == "🧩 Puzzles":
             st.error("Backend not reachable.")
 
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 3 — PIPELINE 4: CHATBOT FRONTEND
-# ════════════════════════════════════════════════════════════════
+
 
 elif page == "💬 Coach Chat":
     st.title("💬 Ask Your Coach")
@@ -526,7 +496,7 @@ elif page == "💬 Coach Chat":
         elif has_play_context:
             st.session_state.chat_context_source = "play_engine"
 
-    # Context switcher
+    
     st.subheader("Current Chat Context")
 
     context_cols = st.columns(2)
@@ -578,7 +548,7 @@ elif page == "💬 Coach Chat":
 
     st.divider()
 
-    # Opening message
+    
     if st.session_state.chatbot_opening:
         with st.chat_message("assistant"):
             st.write(st.session_state.chatbot_opening)
@@ -588,13 +558,12 @@ elif page == "💬 Coach Chat":
                 "Hi, I am your chess coach. Ask me about your moves, mistakes, blunders, or the current game."
             )
 
-    # Chat history
+    
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    # Input
-    # Disable input while thinking
+
     if st.session_state.chat_thinking:
         st.chat_input("Coach is thinking... please wait", disabled=True)
     else:
@@ -643,18 +612,16 @@ elif page == "💬 Coach Chat":
                 st.rerun()
 
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 5 — PIPELINE 5: RULEBOOK
-# ════════════════════════════════════════════════════════════════
+
 
 elif page == "📖 Rulebook":
     st.title("📖 Chess Rulebook")
     st.caption("Learn chess concepts, tactics, and principles. Smart links to your game weaknesses.")
 
-    # Search bar
+    
     search_query = st.text_input("🔍 Search rulebook", placeholder="e.g. fork, castling, pin...")
 
-    # Smart link — show relevant entries based on weakness
+    
     try:
         resp = requests.get(f"{API_URL}/rulebook/relevant/{st.session_state.user_id}", timeout=10)
         if resp.status_code == 200:
@@ -687,7 +654,7 @@ elif page == "📖 Rulebook":
     except Exception:
         pass
 
-    # Search results or full rulebook
+   
     if search_query:
         try:
             resp = requests.get(f"{API_URL}/rulebook/search?q={search_query}", timeout=10)
@@ -716,7 +683,6 @@ elif page == "📖 Rulebook":
             results = []
             categories = []
 
-    # Display by category
     if results and not search_query:
         categories = list(set(e["category"] for e in results))
         for category in sorted(categories):
@@ -753,21 +719,19 @@ elif page == "📖 Rulebook":
                 for m in entry["common_mistakes"]:
                     st.markdown(f"- ⚠️ {m}")
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 6 — RULES CHAT
-# ════════════════════════════════════════════════════════════════
+
 
 elif page == "🎓 Rules Chat":
     st.title("🎓 Chess Rules Assistant")
     st.caption("Ask me anything about chess rules, tactics, and concepts.")
 
-    # Session state for rules chat
+   
     if "rules_chat_history" not in st.session_state:
         st.session_state.rules_chat_history = []
     if "rules_thinking" not in st.session_state:
         st.session_state.rules_thinking = False
 
-    # Show recommended topics based on weakness
+ 
     if not st.session_state.rules_thinking:
         try:
             resp = requests.get(
@@ -783,7 +747,7 @@ elif page == "🎓 Rules Chat":
         except Exception:
             pass
 
-    # Suggested questions
+  
     st.markdown("**Try asking:**")
     suggested = [
         "What is a pin?",
@@ -802,19 +766,17 @@ elif page == "🎓 Rules Chat":
 
     st.divider()
 
-    # Opening message
+   
     if not st.session_state.rules_chat_history:
         with st.chat_message("assistant"):
             st.write("Hi! I'm your chess rules assistant. Ask me anything about chess — "
                     "tactics, rules, openings, endgames, or how to improve specific aspects of your game!")
 
-    # Chat history
+   
     for msg in st.session_state.rules_chat_history:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-# In app.py, replace the Rules Chat "Handle thinking state" block with this.
-# The fix: actually pass rulebook search results instead of a blank space.
    
     if st.session_state.rules_thinking:
         question = st.session_state.rules_chat_history[-1]["content"]
@@ -864,7 +826,7 @@ elif page == "🎓 Rules Chat":
             st.session_state.rules_thinking = False
             st.rerun()
   
-    # Input
+  
     if not st.session_state.rules_thinking:
         if question := st.chat_input("Ask about any chess rule or concept..."):
             st.session_state.rules_chat_history.append({"role": "user", "content": question})
@@ -873,9 +835,6 @@ elif page == "🎓 Rules Chat":
     else:
         st.chat_input("Looking up rules... please wait", disabled=True)
 
-# ════════════════════════════════════════════════════════════════
-# PAGE 4 — DASHBOARD
-# ════════════════════════════════════════════════════════════════
 
 elif page == "📊 Dashboard":
     st.title("📊 Your Progress")
