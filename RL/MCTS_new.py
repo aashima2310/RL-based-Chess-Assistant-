@@ -48,18 +48,13 @@ def mcts_search(root_board, model, device, num_searches=400, c=1.5):
         node  = root
         board = chess.Board(root_board.fen())
         path  = [node]
-
-        # ── SELECT + EXPAND ──────────────────────────────────────────────────
         while True:
             mask  = game_env.get_valid_moves(board).numpy()
             legal = np.where(mask == 1)[0]
             if len(legal) == 0:
                 break
-
-            # Any unvisited child? → expand it immediately
             unvisited = [a for a in legal if a not in node.children]
             if unvisited:
-                # Pick unvisited move with highest prior
                 best_a = max(unvisited,
                     key=lambda a: node.p[a] if node.p is not None else 0)
                 node.children[best_a] = N()
@@ -75,8 +70,6 @@ def mcts_search(root_board, model, device, num_searches=400, c=1.5):
                 node = node.children[best_a]
                 path.append(node)
                 break  # evaluate this new node
-
-            # All children visited → UCB select
             best_a, best_u = None, -1e9
             for a in legal:
                 p      = node.p[a] if node.p is not None else 1.0 / len(legal)
@@ -101,8 +94,6 @@ def mcts_search(root_board, model, device, num_searches=400, c=1.5):
             board.push(move)
             node = node.children[best_a]
             path.append(node)
-
-        # ── EVALUATE ─────────────────────────────────────────────────────────
         if board.is_game_over(claim_draw=True):
             outcome = board.outcome(claim_draw=True)
             leaf_value = -1.0 if (outcome and outcome.winner is not None) else 0.0
@@ -112,15 +103,11 @@ def mcts_search(root_board, model, device, num_searches=400, c=1.5):
 
         node.n += 1
         node.w += leaf_value
-
-        # ── BACKPROP ─────────────────────────────────────────────────────────
         value = -leaf_value
         for n in reversed(path[:-1]):
             n.n += 1
             n.w += value
             value = -value
-
-    # ── RETURN VISIT COUNTS ───────────────────────────────────────────────────
     action_probs = np.zeros(4672)
     for a, child in root.children.items():
         action_probs[a] = child.n
