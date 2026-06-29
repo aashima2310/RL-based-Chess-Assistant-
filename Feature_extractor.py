@@ -56,7 +56,6 @@ class HalfKPExtractor:
         return vec
 
     def board_to_halfkp(self, board: chess.Board) -> tuple:
-        """Returns (white_vec, black_vec) each of shape (41024,)"""
         w_idx = self.get_halfkp_indices(board, chess.WHITE)
         b_idx = self.get_halfkp_indices(board, chess.BLACK)
         return self.indices_to_tensor(w_idx), self.indices_to_tensor(b_idx)
