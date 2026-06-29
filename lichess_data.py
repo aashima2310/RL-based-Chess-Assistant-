@@ -21,8 +21,6 @@ def collect_lichess_data(pgn_file_path="lichess_games.pgn.zst", target_positions
     except Exception as e:
         print(f"Error reading file: {e}")
         return
-
-    # Final save just to make sure everything is completely synchronized
     with open("lichess_data.pkl", 'wb') as out_f:
         pickle.dump(data, out_f)
     print(f"Done! Total unique positions saved: {len(data)}")
