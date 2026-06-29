@@ -42,7 +42,6 @@ class NNUE(nn.Module):
         board,
         extractor
     ) -> float:
-#returns centipawn score here.
         self.eval()
         with torch.no_grad():
             w_idx = extractor.get_halfkp_indices(board, True)
