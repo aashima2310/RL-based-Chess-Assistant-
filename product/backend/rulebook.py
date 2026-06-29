@@ -6,7 +6,6 @@ Each entry has: title, description, example FEN, key principles, common mistakes
 Smart linking: maps mistake types to relevant rulebook entries
 """
 
-# Mapping from weakness type to relevant rulebook entries
 WEAKNESS_TO_RULES = {
     "hanging_piece":  ["hanging_pieces", "piece_safety", "tactical_awareness"],
     "king_safety":    ["king_safety", "castling", "pawn_shield"],
@@ -17,8 +16,7 @@ WEAKNESS_TO_RULES = {
 }
 
 RULEBOOK = {
-    # ── CHESS RULES ──────────────────────────────────────────
-    "how_pieces_move": {
+       "how_pieces_move": {
         "id": "how_pieces_move",
         "category": "Chess Rules",
         "title": "How Pieces Move",
@@ -75,7 +73,7 @@ RULEBOOK = {
         "example_fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
     },
 
-    # ── TACTICAL PATTERNS ────────────────────────────────────
+    
     "hanging_pieces": {
         "id": "hanging_pieces",
         "category": "Tactical Patterns",
@@ -171,7 +169,7 @@ RULEBOOK = {
         "example_fen": "r1bqk2r/ppp2ppp/2n5/3p4/2BPn3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
     },
 
-    # ── KING SAFETY ──────────────────────────────────────────
+    
     "king_safety": {
         "id": "king_safety",
         "category": "King Safety",
@@ -211,7 +209,7 @@ RULEBOOK = {
         "example_fen": "r1bq1rk1/ppp2ppp/2n2n2/3p4/2PP4/2N2NP1/PP2PP1P/R1BQ1RK1 w - - 0 8",
     },
 
-    # ── OPENING PRINCIPLES ───────────────────────────────────
+   
     "piece_development": {
         "id": "piece_development",
         "category": "Opening Principles",
@@ -251,7 +249,7 @@ RULEBOOK = {
         "example_fen": "r1bqkb1r/ppp2ppp/2np1n2/4p3/2PPP3/2N2N2/PP3PPP/R1BQKB1R w KQkq - 0 5",
     },
 
-    # ── ENDGAME ──────────────────────────────────────────────
+    
     "king_and_pawn": {
         "id": "king_and_pawn",
         "category": "Endgame",
