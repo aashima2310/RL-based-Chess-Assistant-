@@ -68,21 +68,10 @@ class PolicyValueNet(nn.Module):
         return priors, value.item()
  
     def evaluate_board(self, board, extractor) -> float:
-        """
-        Returns a centipawn-scaled score, matching NNUE.evaluate_board's
-        (board, extractor) -> float interface.
- 
-        Uses extractor.board_to_tensor_769 to build the 769-length
-        (12 piece planes + turn flag) input this network expects, the
-        same way NNUE uses extractor.get_halfkp_indices.
-        """
         self.eval()
         with torch.no_grad():
             x = extractor.board_to_tensor_769(board)
             _, value = self.forward(x.unsqueeze(0))
-            # Tanh output is in [-1, 1]; scale to a centipawn-ish range.
-            # NOTE: this scale factor is a placeholder, not derived from
-            # training — see caveat below.
             return value.item() * 400.0
  
     def save(self, path: str):
