@@ -40,19 +40,11 @@ class NNUE(nn.Module):
 
 
 class NNUE_AlphaZero(nn.Module):
-    """
-    Matches your checkpoint exactly:
-      backbone.input_weights, backbone.input_bias, backbone.l2/.l3/.l4
-      trunk.weight (128,32), trunk.bias        <- plain Linear, no Sequential
-      policy_head.0 (256,128), policy_head.2 (4672,256)
-      value_head.0 (64,128), value_head.2 (1,64)  + Tanh
-    Legal-move masking is applied INSIDE forward(), before softmax.
-    """
     def __init__(self, input_size=40960, policy_size=4672):
         super().__init__()
         self.backbone = NNUE(input_size=input_size)
 
-        self.trunk = nn.Linear(32, 128)   # plain Linear to match checkpoint keys
+        self.trunk = nn.Linear(32, 128)   
 
         self.policy_head = nn.Sequential(
             nn.Linear(128, 256),
@@ -69,16 +61,16 @@ class NNUE_AlphaZero(nn.Module):
     def _build_legal_mask_batch(self, boards, device):
         masks = []
         for b in boards:
-            m = _extractor.get_legal_moves(b)  # (4672,) float32, 1.0 = legal
+            m = _extractor.get_legal_moves(b)  
             masks.append(m.bool())
         return torch.stack(masks).to(device)
 
     def forward(self, w_acc: torch.Tensor, b_acc: torch.Tensor, board=None):
-        feats = self.backbone.forward_features(w_acc, b_acc)   # (B, 32)
-        trunk_out = F.relu(self.trunk(feats))                   # (B, 128)
+        feats = self.backbone.forward_features(w_acc, b_acc)   
+        trunk_out = F.relu(self.trunk(feats))                
 
-        policy_logits = self.policy_head(trunk_out)              # (B, 4672)
-        value = self.value_head(trunk_out)                       # (B, 1)
+        policy_logits = self.policy_head(trunk_out)        
+        value = self.value_head(trunk_out)                   
 
         if board is not None:
             mask = self._build_legal_mask_batch(board, policy_logits.device)
