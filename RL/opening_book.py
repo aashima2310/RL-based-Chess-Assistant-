@@ -1,4 +1,3 @@
-# RL/opening_book.py
 import os
 import chess
 import chess.polyglot
