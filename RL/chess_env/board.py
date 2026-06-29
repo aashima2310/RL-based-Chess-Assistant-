@@ -18,8 +18,6 @@ class Chess_game:
   def get_next_state(self, state, action):
     state = state.copy()
     move = halfkp_extractor.idx_to_move(action, state)
-    
-    # handle null move
     if move == chess.Move.null():
         legal = list(state.legal_moves)
         if legal:
