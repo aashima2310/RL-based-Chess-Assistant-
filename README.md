@@ -4,15 +4,15 @@ An advanced, end-to-end web-based chess coaching platform powered by a custom-bu
 
 ---
 
-## 📺 Product Demo
+##  Product Demo
 
 [![ChessRL Product Demo](https://img.shields.io/badge/Demo-Play%20Video-red?style=for-the-badge&logo=youtube)](YOUR_VIDEO_DEMO_LINK_HERE)
 
-> 💡 *[Place your demo video link or hosted video reference inside the bracket above to showcase the live Streamlit dashboard, real-time game analysis, and active Coach Chat flows.]*
+>  *[Place your demo video link or hosted video reference inside the bracket above to showcase the live Streamlit dashboard, real-time game analysis, and active Coach Chat flows.]*
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
 ### 1. Analyze Game Page
 * **PGN File Processing:** Paste or upload standard chess PGN files to trigger granular background parsing.
@@ -35,7 +35,7 @@ An advanced, end-to-end web-based chess coaching platform powered by a custom-bu
 
 ---
 
-## 🧠 Model Architecture & Technical Breakdown
+##  Model Architecture & Technical Breakdown
 
 The foundational intelligence layer bypasses heavy convolutional overhead by deploying an incredibly efficient network design optimized directly for consumer-tier execution limits.
 
@@ -53,7 +53,7 @@ The foundational intelligence layer bypasses heavy convolutional overhead by dep
 
 ---
 
-## 📊 Empirical Performance & Elo Validation
+##  Empirical Performance & Elo Validation
 
 The engine performance was rigorously measured using programmatic, alternate-color match sequences against anchor implementations of Stockfish running with limited strength configurations (`UCI_LimitStrength`).
 
@@ -67,18 +67,15 @@ Game 5/24 (W): W   Game 11/24 (W): L  Game 17/24 (W): W   Game 23/24 (W): L
 Game 6/24 (B): L   Game 12/24 (B): L  Game 18/24 (B): D   Game 24/24 (B): L
 
 Result: 8W 5D 11L | Cumulative Performance Score: 0.44
-🚀 Final Verified Evaluation: ~1306 Elo
+Final Verified Evaluation: ~1306 Elo
 ```
 
 ### Elo Tracking & Validation Proofs
-* **Mathematical Verification Notebook:** Access the complete, unedited execution logs and verification scripts directly in our [Google Colab Validation Notebook](https://colab.research.google.com/drive/1htRNNx33S5Za5OrSYlt-8fBmmwmy81ZN?usp=sharing).
-
-![Elo Performance Convergence Chart](image_e84f60.png)
-*(Image above displays the structural Elo measurement scaling plots and training validation checkpoints)*
+* **Mathematical Verification Notebook:** Access the complete, unedited execution logs and verification scripts directly in our [Google Colab Validation Notebook](https://colab.research.google.com/drive/1NcUWF3wpufjrV6Leho5dYwP7t8PlTywX#scrollTo=WM59jUJ72Krp).
 
 ---
 
-## 🛠️ Technology Stack
+##  Technology Stack
 
 * **Frontend UI Framework:** `Streamlit` (Selected for accelerated prototyping, low-overhead native Python bindings, and clean SVG canvas rendering capabilities).
 * **Asynchronous Backend API:** `FastAPI` + `Uvicorn` (Manages atomic JSON communications, distinct routing logic, and parallel state operations).
@@ -88,7 +85,7 @@ Result: 8W 5D 11L | Cumulative Performance Score: 0.44
 
 ---
 
-## 🏗️ Repository Structure & Architecture
+##  Repository Structure & Architecture
 
 A high-level view of the repository demonstrates a clean separation between the frontend interface component and the underlying core algorithmic engines:
 
@@ -127,7 +124,7 @@ ChessRL/
 
 ---
 
-## 🚦 Getting Started & Local Installation
+##  Getting Started & Local Installation
 
 ### 1. Clone the Repository
 ```bash
@@ -157,7 +154,7 @@ streamlit run product/app.py
 
 ---
 
-## ⚖️ Current Limitations & Roadmap
+## Current Limitations & Roadmap
 
 ### Active Limitations
 * **Tightly Coupled Weights:** The final, heavily optimized RL network parameters are still undergoing complex generation cycles; the system currently operates over a high-performance runtime MCTS engine prototype.
