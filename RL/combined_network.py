@@ -40,11 +40,12 @@ class NNUE(nn.Module):
 
 
 class NNUE_AlphaZero(nn.Module):
+  
     def __init__(self, input_size=40960, policy_size=4672):
         super().__init__()
         self.backbone = NNUE(input_size=input_size)
 
-        self.trunk = nn.Linear(32, 128)   
+        self.trunk = nn.Linear(32, 128)
 
         self.policy_head = nn.Sequential(
             nn.Linear(128, 256),
@@ -61,16 +62,17 @@ class NNUE_AlphaZero(nn.Module):
     def _build_legal_mask_batch(self, boards, device):
         masks = []
         for b in boards:
-            m = _extractor.get_legal_moves(b)  
+            m = _extractor.get_legal_moves(b)
             masks.append(m.bool())
         return torch.stack(masks).to(device)
 
     def forward(self, w_acc: torch.Tensor, b_acc: torch.Tensor, board=None):
-        feats = self.backbone.forward_features(w_acc, b_acc)   
-        trunk_out = F.relu(self.trunk(feats))                
 
-        policy_logits = self.policy_head(trunk_out)        
-        value = self.value_head(trunk_out)                   
+        feats = self.backbone.forward_features(w_acc, b_acc)
+        trunk_out = F.relu(self.trunk(feats))
+
+        policy_logits = self.policy_head(trunk_out)
+        value = self.value_head(trunk_out)
 
         if board is not None:
             mask = self._build_legal_mask_batch(board, policy_logits.device)
@@ -100,6 +102,7 @@ class NNUE_AlphaZero(nn.Module):
 
 
 def alphazero_loss(policy_preds, value_preds, policy_targets, value_targets, model=None, l2_lambda=1e-4):
+
     eps = 1e-8
     policy_loss = -(policy_targets * torch.log(policy_preds + eps)).sum(dim=1).mean()
     value_loss = F.mse_loss(value_preds, value_targets)
