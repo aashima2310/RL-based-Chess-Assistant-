@@ -28,6 +28,9 @@ class HalfKPExtractor:
         (chess.QUEEN,  chess.WHITE): 8,
         (chess.QUEEN,  chess.BLACK): 9,
     }
+    
+    _decode_mismatch_count = 0
+    _decode_mismatch_logged = 0
 
     def get_halfkp_indices(self, board: chess.Board, turn: bool) -> list:
         king_sq = board.king(turn)
@@ -90,6 +93,9 @@ class HalfKPExtractor:
         return torch.tensor(vector, dtype=torch.float32)
 
     def get_legal_moves(self, board: chess.Board) -> torch.Tensor:
+        """Canonical legal-move mask. board.py's Chess_game.get_valid_moves()
+        delegates here so the mask can never drift out of sync with
+        move_to_idx/idx_to_move."""
         mask = torch.zeros(4672, dtype=torch.float32)
         for move in board.legal_moves:
             if move.promotion is None:
@@ -176,6 +182,26 @@ class HalfKPExtractor:
 
         return chess.Move(from_sq, to_sq, promotion=promotion)
 
+    def resolve_move(self, action_idx: int, board: chess.Board, policy=None):
+        
+        move = self.idx_to_move(action_idx, board)
+        if board.is_legal(move):
+            return move, action_idx
+
+        HalfKPExtractor._decode_mismatch_count += 1
+        if HalfKPExtractor._decode_mismatch_logged < 20:
+            print(f"[encoding] decode mismatch #{HalfKPExtractor._decode_mismatch_count}: "
+                  f"idx {action_idx} -> {move} illegal on {board.fen()}")
+            HalfKPExtractor._decode_mismatch_logged += 1
+
+        legal_list = list(board.legal_moves)
+        if policy is not None:
+            fallback_move = max(legal_list, key=lambda m: policy[self.move_to_idx(m)])
+        else:
+            fallback_move = legal_list[0]
+        true_idx = self.move_to_idx(fallback_move)
+        return fallback_move, true_idx
+
     def move_to_policy_target(self, mcts_visit_counts: dict, board: chess.Board) -> torch.Tensor:
         policy = torch.zeros(4672, dtype=torch.float32)
         total_visits = sum(mcts_visit_counts.values())
@@ -197,3 +223,6 @@ def move_to_index(move: chess.Move) -> int:
 
 def index_to_move(idx: int, board: chess.Board | None = None) -> chess.Move:
     return _default_extractor.idx_to_move(idx, board)
+
+def resolve_move(action_idx: int, board: chess.Board, policy=None):
+    return _default_extractor.resolve_move(action_idx, board, policy)
