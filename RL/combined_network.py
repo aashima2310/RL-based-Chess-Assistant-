@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 import sys
+
 sys.path.append('/content/repo')
 from RL.chess_env.features import HalfKPExtractor
 
@@ -40,18 +41,24 @@ class NNUE(nn.Module):
 
 
 class NNUE_AlphaZero(nn.Module):
-  
     def __init__(self, input_size=40960, policy_size=4672):
         super().__init__()
         self.backbone = NNUE(input_size=input_size)
 
         self.trunk = nn.Linear(32, 128)
 
+        # OPTION A: Upgraded high-capacity policy head with LayerNorm blocks
         self.policy_head = nn.Sequential(
-            nn.Linear(128, 256),
+            nn.Linear(128, 512),
+            nn.LayerNorm(512),
             nn.ReLU(),
-            nn.Linear(256, policy_size),
+            nn.Linear(512, 1024),
+            nn.LayerNorm(1024),
+            nn.ReLU(),
+            nn.Linear(1024, policy_size),
         )
+        
+        # Keeping the value head consistent so it maps seamlessly to value checkpoints
         self.value_head = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -67,7 +74,6 @@ class NNUE_AlphaZero(nn.Module):
         return torch.stack(masks).to(device)
 
     def forward(self, w_acc: torch.Tensor, b_acc: torch.Tensor, board=None):
-
         feats = self.backbone.forward_features(w_acc, b_acc)
         trunk_out = F.relu(self.trunk(feats))
 
@@ -102,12 +108,13 @@ class NNUE_AlphaZero(nn.Module):
 
 
 def alphazero_loss(policy_preds, value_preds, policy_targets, value_targets, model=None, l2_lambda=1e-4):
-
     eps = 1e-8
     policy_loss = -(policy_targets * torch.log(policy_preds + eps)).sum(dim=1).mean()
     value_loss = F.mse_loss(value_preds, value_targets)
+    
     l2_reg = 0.0
     if model is not None and l2_lambda > 0:
         l2_reg = l2_lambda * sum((p ** 2).sum() for p in model.parameters() if p.requires_grad)
+        
     total_loss = policy_loss + value_loss + l2_reg
     return total_loss, policy_loss, value_loss
