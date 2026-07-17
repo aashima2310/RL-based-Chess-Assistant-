@@ -1,7 +1,7 @@
 import chess, torch, numpy as np, math
 from RL.chess_env.features import HalfKPExtractor
 from RL.mcts.node import Node
-from RL.mcts.tablebase import SyzygyProbe
+from RL.mcts.Tablebase import SyzygyProbe
 
 
 class MCTS:
