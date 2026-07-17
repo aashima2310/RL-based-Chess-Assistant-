@@ -1,27 +1,29 @@
 import chess, torch, numpy as np, math
 from RL.chess_env.features import HalfKPExtractor
 from RL.mcts.node import Node
+from RL.mcts.tablebase import SyzygyProbe
+
 
 class MCTS:
-    def __init__(self, game, args, model):
+    def __init__(self, game, args, model, tablebase_dir=None, tablebase_max_pieces=6):
         self.game      = game
         self.args      = args
         self.model     = model
         self.device    = next(model.parameters()).device
         self.extractor = HalfKPExtractor()
+        self.syzygy = None
+        if tablebase_dir is not None:
+            self.syzygy = SyzygyProbe(tablebase_dir, max_pieces=tablebase_max_pieces)
 
     def _get_policy_value(self, board):
-        
         w_idx = self.extractor.get_halfkp_indices(board, chess.WHITE)
         b_idx = self.extractor.get_halfkp_indices(board, chess.BLACK)
         w = self.model.backbone.refresh_accumulator(w_idx).unsqueeze(0).to(self.device)
         b = self.model.backbone.refresh_accumulator(b_idx).unsqueeze(0).to(self.device)
-
         self.model.eval()
         with torch.no_grad():
             pol, val = self.model(w, b, [board])
         pol = pol.squeeze(0).cpu().numpy()
-
         mask = self.game.get_valid_moves(board).numpy()
         pol  = pol * mask
         s    = pol.sum()
@@ -30,13 +32,32 @@ class MCTS:
         else:
             legal = np.where(mask == 1)[0]
             pol[legal] = 1.0 / len(legal)
-
         v = val.item()
         return pol, v
 
+    def _tablebase_value(self, board):
+        if self.syzygy is None:
+            return None
+        if not self.syzygy.is_available(board):
+            return None
+        return self.syzygy.probe_value(board)
+
+    def _uniform_policy_for(self, board):
+        mask = self.game.get_valid_moves(board).numpy()
+        legal = np.where(mask == 1)[0]
+        policy = np.zeros_like(mask, dtype=np.float64)
+        if len(legal) > 0:
+            policy[legal] = 1.0 / len(legal)
+        return policy
+
     def search(self, state):
         root = Node(self.game, self.args, chess.Board(state.fen()))
-        pol, val = self._get_policy_value(root.state)
+        root_tb_value = self._tablebase_value(root.state)
+        if root_tb_value is not None:
+            pol = self._uniform_policy_for(root.state)
+            val = root_tb_value
+        else:
+            pol, val = self._get_policy_value(root.state)
 
         if self.args.get("add_noise", False):
             alpha = self.args.get("dirichlet_alpha", 0.3)
@@ -52,12 +73,10 @@ class MCTS:
         for _ in range(self.args["num_searches"]):
             node = root
             path = [node]
-
             while node.visit_count > 0 and node.policy is not None:
                 action = node.select()
                 if action is None:
                     break
-
                 if action not in node.children:
                     ns = self.game.get_next_state(node.state, action)
                     node.children[action] = Node(
@@ -65,21 +84,27 @@ class MCTS:
                         parent=node, action_taken=action)
                     node = node.children[action]
                     path.append(node)
-                    break  
-
+                    break
                 node = node.children[action]
                 path.append(node)
 
             board = node.state
+
             if board.is_game_over(claim_draw=True):
                 outcome = board.outcome(claim_draw=True)
                 if outcome and outcome.winner is not None:
-                    value = -1.0  
+                    value = -1.0
                 else:
                     value = 0.0
             else:
-                pol2, value = self._get_policy_value(board)
-                node.expand(pol2, value)
+                tb_value = self._tablebase_value(board)
+                if tb_value is not None:
+                    # Exact result available: skip the network entirely.
+                    value = tb_value
+                    node.expand(self._uniform_policy_for(board), value)
+                else:
+                    pol2, value = self._get_policy_value(board)
+                    node.expand(pol2, value)
 
             for n in reversed(path):
                 n.back_propagate(value)
