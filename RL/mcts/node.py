@@ -50,7 +50,7 @@ class Node:
         return best_child
 
     def expand(self, policy_probs, value=None):
-    self.policy = policy_probs
+        self.policy = policy_probs
 
     def back_propagate(self, value):
         self.value_sum += value
