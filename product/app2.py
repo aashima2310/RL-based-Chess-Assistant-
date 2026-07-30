@@ -350,11 +350,10 @@ def render_clickable_board():
     """
     Shows a proper visual chess board using SVG.
     Below it, a square selector grid is shown for clicking moves.
-    This keeps the board looking like a real chess board while still allowing click-based moves.
+    This avoids nested Streamlit column errors.
     """
     board = chess.Board(st.session_state.play_fen)
 
-    # Highlight selected square on the proper visual board
     fill = {}
 
     if st.session_state.play_selected_square:
@@ -366,7 +365,6 @@ def render_clickable_board():
 
     last_move = get_last_move_for_svg()
 
-    # Proper visual board
     try:
         svg = chess.svg.board(
             board,
@@ -391,7 +389,6 @@ def render_clickable_board():
 
     files = ["a", "b", "c", "d", "e", "f", "g", "h"]
 
-    # Top file labels for selector grid
     top_cols = st.columns([0.4, 1, 1, 1, 1, 1, 1, 1, 1])
     top_cols[0].markdown("")
 
@@ -401,7 +398,6 @@ def render_clickable_board():
             unsafe_allow_html=True
         )
 
-    # Clickable selector grid
     for rank in range(8, 0, -1):
         cols = st.columns([0.4, 1, 1, 1, 1, 1, 1, 1, 1])
 
@@ -434,7 +430,6 @@ def render_clickable_board():
             ):
                 handle_square_click(square_name)
 
-    # Bottom file labels for selector grid
     bottom_cols = st.columns([0.4, 1, 1, 1, 1, 1, 1, 1, 1])
     bottom_cols[0].markdown("")
 
@@ -732,37 +727,35 @@ elif page == "♟ Play Engine":
         "The engine will reply automatically."
     )
 
-    col_board, col_controls = st.columns([1.35, 1])
+    st.subheader("Chess Board")
 
-    with col_board:
-        st.subheader("Chess Board")
+    render_clickable_board()
 
-        board_col, captured_col = st.columns([3, 1.2])
+    try:
+        board = chess.Board(st.session_state.play_fen)
 
-        with board_col:
-            render_clickable_board()
+        st.caption(
+            f"Current turn: **{'White' if board.turn == chess.WHITE else 'Black'}**"
+        )
 
-            try:
-                board = chess.Board(st.session_state.play_fen)
+        if board.is_game_over():
+            st.success(f"Game over. Result: {board.result()}")
 
-                st.caption(
-                    f"Current turn: **{'White' if board.turn == chess.WHITE else 'Black'}**"
-                )
+    except Exception as e:
+        st.error(f"Board error: {e}")
 
-                if board.is_game_over():
-                    st.success(f"Game over. Result: {board.result()}")
+    st.divider()
 
-            except Exception as e:
-                st.error(f"Board error: {e}")
+    col_captured, col_controls = st.columns([1, 1])
 
-        with captured_col:
-            st.subheader("Captured")
+    with col_captured:
+        st.subheader("Captured Pieces")
 
-            st.markdown("**Captured by You**")
-            render_captured_piece_images(st.session_state.play_captured_by_you)
+        st.markdown("**Captured by You**")
+        render_captured_piece_images(st.session_state.play_captured_by_you)
 
-            st.markdown("**Captured by Engine**")
-            render_captured_piece_images(st.session_state.play_captured_by_engine)
+        st.markdown("**Captured by Engine**")
+        render_captured_piece_images(st.session_state.play_captured_by_engine)
 
     with col_controls:
         st.subheader("Controls")
