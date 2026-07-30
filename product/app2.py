@@ -122,6 +122,26 @@ def render_captured_piece_images(piece_data_list):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def get_last_move_for_svg():
+    """
+    Returns the latest move so the visual board can highlight it.
+    Engine move is preferred because it is usually the latest move.
+    """
+    if not st.session_state.play_history:
+        return None
+
+    last_item = st.session_state.play_history[-1]
+    move_uci = last_item.get("engine_move") or last_item.get("user_move")
+
+    if not move_uci:
+        return None
+
+    try:
+        return chess.Move.from_uci(move_uci)
+    except Exception:
+        return None
+
+
 def build_play_engine_context():
     """
     Builds context from the Play Engine page.
@@ -328,27 +348,67 @@ def handle_square_click(square_name):
 
 def render_clickable_board():
     """
-    Renders a clickable 8x8 chess board using Streamlit buttons.
-    The board is shown from White's perspective.
+    Shows a proper visual chess board using SVG.
+    Below it, a square selector grid is shown for clicking moves.
+    This keeps the board looking like a real chess board while still allowing click-based moves.
     """
     board = chess.Board(st.session_state.play_fen)
-    files = ["a", "b", "c", "d", "e", "f", "g", "h"]
 
-    st.caption("Click your piece, then click the destination square.")
+    # Highlight selected square on the proper visual board
+    fill = {}
 
-    # File labels on top
-    top_cols = st.columns([0.35, 1, 1, 1, 1, 1, 1, 1, 1])
-    top_cols[0].markdown("")
-    for i, file_letter in enumerate(files):
-        top_cols[i + 1].markdown(
-            f"<div style='text-align:center'><b>{file_letter}</b></div>",
+    if st.session_state.play_selected_square:
+        try:
+            selected_sq = chess.parse_square(st.session_state.play_selected_square)
+            fill[selected_sq] = "#f7ec59"
+        except Exception:
+            pass
+
+    last_move = get_last_move_for_svg()
+
+    # Proper visual board
+    try:
+        svg = chess.svg.board(
+            board,
+            size=520,
+            coordinates=True,
+            lastmove=last_move,
+            fill=fill
+        )
+        b64 = base64.b64encode(svg.encode()).decode()
+
+        st.markdown(
+            f'<img src="data:image/svg+xml;base64,{b64}" width="520"/>',
             unsafe_allow_html=True
         )
 
-    for rank in range(8, 0, -1):
-        cols = st.columns([0.35, 1, 1, 1, 1, 1, 1, 1, 1])
+    except Exception as e:
+        st.error(f"Board rendering error: {e}")
 
-        cols[0].markdown(f"**{rank}**")
+    st.caption(
+        "Move selector: click the source square below, then click the destination square."
+    )
+
+    files = ["a", "b", "c", "d", "e", "f", "g", "h"]
+
+    # Top file labels for selector grid
+    top_cols = st.columns([0.4, 1, 1, 1, 1, 1, 1, 1, 1])
+    top_cols[0].markdown("")
+
+    for i, file_letter in enumerate(files):
+        top_cols[i + 1].markdown(
+            f"<div style='text-align:center; font-weight:600;'>{file_letter}</div>",
+            unsafe_allow_html=True
+        )
+
+    # Clickable selector grid
+    for rank in range(8, 0, -1):
+        cols = st.columns([0.4, 1, 1, 1, 1, 1, 1, 1, 1])
+
+        cols[0].markdown(
+            f"<div style='padding-top:8px; font-weight:600;'>{rank}</div>",
+            unsafe_allow_html=True
+        )
 
         for file_index, file_letter in enumerate(files):
             square_name = f"{file_letter}{rank}"
@@ -358,26 +418,29 @@ def render_clickable_board():
             if piece:
                 label = piece.unicode_symbol()
             else:
-                label = "·"
+                label = " "
 
             if st.session_state.play_selected_square == square_name:
-                label = f"🔴 {label}"
+                display_label = f"● {label}" if label.strip() else "●"
+            else:
+                display_label = label if label.strip() else "·"
 
             key = f"play_square_{square_name}"
 
             if cols[file_index + 1].button(
-                label,
+                display_label,
                 key=key,
                 use_container_width=True
             ):
                 handle_square_click(square_name)
 
-    # File labels on bottom
-    bottom_cols = st.columns([0.35, 1, 1, 1, 1, 1, 1, 1, 1])
+    # Bottom file labels for selector grid
+    bottom_cols = st.columns([0.4, 1, 1, 1, 1, 1, 1, 1, 1])
     bottom_cols[0].markdown("")
+
     for i, file_letter in enumerate(files):
         bottom_cols[i + 1].markdown(
-            f"<div style='text-align:center'><b>{file_letter}</b></div>",
+            f"<div style='text-align:center; font-weight:600;'>{file_letter}</div>",
             unsafe_allow_html=True
         )
 
