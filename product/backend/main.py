@@ -1,13 +1,6 @@
-from dotenv import load_dotenv
-import os
-
-# Use utf-8-sig here too to ensure the BOM never breaks your variables
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), encoding="utf-8-sig")
-
-
-
 import asyncio
 import sys
+import os
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -67,6 +60,7 @@ class EngineMoveRequest(BaseModel):
     fen: str
     move: str
     difficulty: str = "easy"
+    engine_type: str = "stockfish"  # Added engine_type field
 
 
 class RulesChatRequest(BaseModel):
@@ -134,7 +128,8 @@ def get_analysis(game_id: int):
 
 @app.post("/engine_move")
 def engine_move(req: EngineMoveRequest):
-    game = GameManager(difficulty=req.difficulty, fen=req.fen)
+    # Pass the engine_type configuration into the game manager
+    game = GameManager(difficulty=req.difficulty, fen=req.fen, engine_type=req.engine_type)
     user_result = game.play_user_move(req.move)
 
     if not user_result["success"]:
