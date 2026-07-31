@@ -17,15 +17,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# ─────────────────────────────────────────────────────────────
-# Helper functions
-# ─────────────────────────────────────────────────────────────
-
 def piece_to_data(piece):
-    """
-    Converts a chess.Piece into simple storable data.
-    This is used for captured pieces.
-    """
     if piece is None:
         return None
 
@@ -34,11 +26,7 @@ def piece_to_data(piece):
         "color": piece.color
     }
 
-
 def piece_data_to_piece(piece_data):
-    """
-    Converts stored piece data back into a chess.Piece.
-    """
     if not piece_data:
         return None
 
@@ -47,11 +35,7 @@ def piece_data_to_piece(piece_data):
         piece_data["color"]
     )
 
-
 def piece_data_to_unicode(piece_data):
-    """
-    Converts stored captured piece data into a chess symbol.
-    """
     piece = piece_data_to_piece(piece_data)
 
     if piece is None:
@@ -59,13 +43,7 @@ def piece_data_to_unicode(piece_data):
 
     return piece.unicode_symbol()
 
-
 def get_captured_piece_data(board, move_uci):
-    """
-    Checks whether a move captures a piece.
-    Handles normal captures and en passant.
-    Returns captured piece data or None.
-    """
     try:
         move = chess.Move.from_uci(move_uci)
     except ValueError:
@@ -74,7 +52,6 @@ def get_captured_piece_data(board, move_uci):
     if move not in board.legal_moves:
         return None
 
-    # Special capture: en passant
     if board.is_en_passant(move):
         captured_square = chess.square(
             chess.square_file(move.to_square),
@@ -83,16 +60,10 @@ def get_captured_piece_data(board, move_uci):
         captured_piece = board.piece_at(captured_square)
         return piece_to_data(captured_piece)
 
-    # Normal capture
     captured_piece = board.piece_at(move.to_square)
     return piece_to_data(captured_piece)
 
-
 def render_captured_piece_images(piece_data_list):
-    """
-    Displays captured pieces as chess piece images.
-    If SVG rendering fails, it falls back to unicode symbols.
-    """
     if not piece_data_list:
         st.caption("No captures yet.")
         return
@@ -123,12 +94,7 @@ def render_captured_piece_images(piece_data_list):
 
     st.markdown(html, unsafe_allow_html=True)
 
-
 def get_last_move_for_svg():
-    """
-    Returns the latest move so the visual board can highlight it.
-    Engine move is preferred because it is usually the latest move.
-    """
     if not st.session_state.play_history:
         return None
 
@@ -143,12 +109,7 @@ def get_last_move_for_svg():
     except Exception:
         return None
 
-
 def build_play_engine_context():
-    """
-    Builds context from the Play Engine page.
-    This will be sent to the chatbot backend later.
-    """
     try:
         board = chess.Board(st.session_state.play_fen)
         game_over = board.is_game_over()
@@ -168,18 +129,13 @@ def build_play_engine_context():
         "captured_by_engine": st.session_state.play_captured_by_engine,
     }
 
-
 def play_move_with_backend(user_move):
-    """
-    Sends a clicked user move to the backend.
-    Backend validates the move, engine replies, and frontend updates board.
-    """
     old_fen = st.session_state.play_fen
     board_before_user = chess.Board(old_fen)
 
     user_captured = get_captured_piece_data(board_before_user, user_move)
 
-    MIN_THINK_TIME = 2.0  # seconds
+    MIN_THINK_TIME = 2.0
 
     try:
         with st.spinner("Engine thinking..."):
@@ -191,7 +147,6 @@ def play_move_with_backend(user_move):
                     "fen": old_fen,
                     "move": user_move,
                     "difficulty": st.session_state.play_difficulty.lower(),
-                    # Send configured engine type to backend
                     "engine_type": "stockfish" if st.session_state.play_engine_type == "Stockfish" else "custom"
                 },
                 timeout=120,
@@ -206,6 +161,7 @@ def play_move_with_backend(user_move):
 
             if data.get("success"):
                 engine_move = data.get("engine_move")
+
                 engine_captured = None
 
                 try:
@@ -282,13 +238,7 @@ def play_move_with_backend(user_move):
         st.session_state.play_status_message = f"Error: {e}"
         st.rerun()
 
-
 def handle_square_click(square_name):
-    """
-    Two-click movement:
-    first click = source square
-    second click = destination square
-    """
     board = chess.Board(st.session_state.play_fen)
 
     if board.is_game_over():
@@ -299,7 +249,6 @@ def handle_square_click(square_name):
     clicked_square = chess.parse_square(square_name)
     selected_square = st.session_state.play_selected_square
 
-    # First click
     if selected_square is None:
         piece = board.piece_at(clicked_square)
 
@@ -320,7 +269,6 @@ def handle_square_click(square_name):
         )
         st.rerun()
 
-    # Second click
     else:
         if selected_square == square_name:
             st.session_state.play_selected_square = None
@@ -356,11 +304,6 @@ def handle_square_click(square_name):
 
         play_move_with_backend(move_uci)
 
-
-# ─────────────────────────────────────────────────────────────
-# Clickable board rendering (PNG + pixel-coordinate click mapping)
-# ─────────────────────────────────────────────────────────────
-
 LIGHT_SQ = (240, 217, 181)
 DARK_SQ = (181, 136, 99)
 HILITE_SQ = (247, 236, 89)
@@ -373,13 +316,8 @@ PIECE_GLYPH = {
     (chess.ROOK, False): "♜", (chess.QUEEN, False): "♛", (chess.KING, False): "♚",
 }
 
-
 @st.cache_resource
 def get_piece_font(size):
-    """
-    Loads a font capable of rendering chess glyphs.
-    Falls back to matplotlib's bundled DejaVuSans if no system font is found.
-    """
     try:
         return ImageFont.truetype("DejaVuSans.ttf", size)
     except Exception:
@@ -394,12 +332,7 @@ def get_piece_font(size):
         except Exception:
             return ImageFont.load_default()
 
-
 def render_board_image(board, size=480, selected_square=None, last_move=None):
-    """
-    Draws the board as a plain PNG (no SVG/cairosvg dependency needed).
-    Row 0 = rank 8 (top), col 0 = file a (left) — standard orientation.
-    """
     sq = size // 8
     img = Image.new("RGB", (size, size), DARK_SQ)
     draw = ImageDraw.Draw(img)
@@ -429,22 +362,16 @@ def render_board_image(board, size=480, selected_square=None, last_move=None):
                 tx = x0 + (sq - tw) / 2 - bbox[0]
                 ty = y0 + (sq - th) / 2 - bbox[1]
 
-                if piece.color:  # white piece
+                if piece.color:
                     draw.text((tx, ty), glyph, font=font, fill="white",
                                stroke_width=2, stroke_fill="black")
-                else:  # black piece
+                else:
                     draw.text((tx, ty), glyph, font=font, fill="black",
                                stroke_width=1, stroke_fill="white")
 
     return img
 
-
 def render_clickable_board():
-    """
-    Single clickable chess board — no invisible second board.
-    Uses streamlit_image_coordinates to get real pixel clicks directly on
-    the rendered board image, then maps those pixels to a square name.
-    """
     board = chess.Board(st.session_state.play_fen)
 
     selected_square = None
@@ -488,11 +415,6 @@ def render_clickable_board():
             square_name = f"{files[file_idx]}{rank + 1}"
 
             handle_square_click(square_name)
-
-
-# ─────────────────────────────────────────────────────────────
-# Session state
-# ─────────────────────────────────────────────────────────────
 
 if "user_id" not in st.session_state:
     st.session_state.user_id = "default_user"
@@ -539,11 +461,6 @@ if "chat_play_context" not in st.session_state:
 if "chat_thinking" not in st.session_state:
     st.session_state.chat_thinking = False
 
-
-# ─────────────────────────────────────────────────────────────
-# Sidebar
-# ─────────────────────────────────────────────────────────────
-
 with st.sidebar:
     st.title("♟ ChessRL")
     st.caption("RL-Powered Chess Coach")
@@ -569,11 +486,6 @@ with st.sidebar:
         value=st.session_state.user_id
     )
     st.caption(f"Logged in as: `{st.session_state.user_id}`")
-
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 1 — ANALYZE GAME
-# ════════════════════════════════════════════════════════════════
 
 if page == "📤 Analyze Game":
     st.title("📤 Analyze Your Game")
@@ -769,11 +681,6 @@ if page == "📤 Analyze Game":
             "see Puzzles tab for targeted training"
         )
 
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 2 — PLAY ENGINE
-# ════════════════════════════════════════════════════════════════
-
 elif page == "♟ Play Engine":
     st.title("♟ Play Against Engine")
     st.caption(
@@ -813,7 +720,6 @@ elif page == "♟ Play Engine":
         st.divider()
         st.subheader("Controls")
 
-        # Engine Selector Addition
         st.session_state.play_engine_type = st.selectbox(
             "Select Opponent",
             ["Stockfish", "Custom AI"],
@@ -927,11 +833,6 @@ elif page == "♟ Play Engine":
             st.success("Play Engine context sent to Coach Chat.")
             st.rerun()
 
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 3 — PUZZLES
-# ════════════════════════════════════════════════════════════════
-
 elif page == "🧩 Puzzles":
     st.title("🧩 Recommended Puzzles")
 
@@ -1035,11 +936,6 @@ elif page == "🧩 Puzzles":
 
         except Exception:
             st.error("Backend not reachable.")
-
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 4 — COACH CHAT
-# ════════════════════════════════════════════════════════════════
 
 elif page == "💬 Coach Chat":
     st.title("💬 Ask Your Coach")
@@ -1202,11 +1098,6 @@ elif page == "💬 Coach Chat":
             st.session_state.chat_thinking = False
             st.rerun()
 
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 5 — RULEBOOK
-# ════════════════════════════════════════════════════════════════
-
 elif page == "📖 Rulebook":
     st.title("📖 Chess Rulebook")
     st.caption(
@@ -1354,11 +1245,6 @@ elif page == "📖 Rulebook":
                 st.markdown("**Common Mistakes:**")
                 for m in entry["common_mistakes"]:
                     st.markdown(f"- ⚠️ {m}")
-
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 6 — RULES CHAT
-# ════════════════════════════════════════════════════════════════
 
 elif page == "🎓 Rules Chat":
     st.title("🎓 Chess Rules Assistant")
@@ -1508,11 +1394,6 @@ elif page == "🎓 Rules Chat":
             st.rerun()
     else:
         st.chat_input("Looking up rules... please wait", disabled=True)
-
-
-# ════════════════════════════════════════════════════════════════
-# PAGE 7 — DASHBOARD
-# ════════════════════════════════════════════════════════════════
 
 elif page == "📊 Dashboard":
     st.title("📊 Your Progress")
