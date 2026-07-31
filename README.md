@@ -8,7 +8,7 @@ An advanced, end-to-end web-based chess coaching platform powered by a custom-bu
 
 [![ChessRL Product Demo](https://img.shields.io/badge/Demo-Play%20Video-red?style=for-the-badge&logo=youtube)](YOUR_VIDEO_DEMO_LINK_HERE)
 
->  *[Place your demo video link or hosted video reference inside the bracket above to showcase the live Streamlit dashboard, real-time game analysis, and active Coach Chat flows.]*
+>  https://drive.google.com/drive/u/0/folders/1cieCRgUm2rGBY_RyMsV-BePhJci01g4T
 
 ---
 
