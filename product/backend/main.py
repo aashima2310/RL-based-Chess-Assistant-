@@ -12,7 +12,6 @@ from typing import Optional
 
 sys.path.append(os.path.dirname(__file__))
 
-# Import execute_query along with the database utilities
 from database import (
     init_db,
     save_game_analysis,
@@ -46,7 +45,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_db()
-    preload_puzzles()   # load once here, not on first user request
+    preload_puzzles()
     print("ChessRL API ready for deployment.")
 
 
@@ -60,7 +59,7 @@ class EngineMoveRequest(BaseModel):
     fen: str
     move: str
     difficulty: str = "easy"
-    engine_type: str = "stockfish"  # Added engine_type field
+    engine_type: str = "stockfish"
 
 
 class RulesChatRequest(BaseModel):
@@ -128,7 +127,6 @@ def get_analysis(game_id: int):
 
 @app.post("/engine_move")
 def engine_move(req: EngineMoveRequest):
-    # Pass the engine_type configuration into the game manager
     game = GameManager(difficulty=req.difficulty, fen=req.fen, engine_type=req.engine_type)
     user_result = game.play_user_move(req.move)
 
@@ -169,7 +167,6 @@ def get_user_puzzles(user_id: str, n: int = 5):
 def profile_history(user_id: str):
     conn = get_connection()
     c = conn.cursor()
-    # Uses execute_query helper for Postgres parameter binding compatibility (%s vs ?)
     execute_query(c, """
         SELECT played_at, blunders, mistakes, inaccuracies,
                avg_cp_loss, primary_weakness,
