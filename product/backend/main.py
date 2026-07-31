@@ -1,17 +1,44 @@
+from dotenv import load_dotenv
+import os
+
+# Use utf-8-sig here too to ensure the BOM never breaks your variables
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), encoding="utf-8-sig")
+
+
+
+import asyncio
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import sys
-import os
+
 sys.path.append(os.path.dirname(__file__))
 
+# Import execute_query along with the database utilities
+from database import (
+    init_db,
+    save_game_analysis,
+    get_player_profile,
+    get_game_analysis,
+    get_connection,
+    execute_query
+)
 from analyzer import analyze_pgn
-from database import init_db, save_game_analysis, get_player_profile, get_game_analysis
-from puzzle import get_puzzles
+from puzzle import get_puzzles, preload_puzzles
 from chatbot import get_opening_message, answer_question
 from game_manager import GameManager
-from rulebook import get_all_entries, get_entry, get_by_category, get_categories, get_relevant_entries, search_rulebook
+from rulebook import (
+    get_all_entries,
+    get_entry,
+    get_categories,
+    get_relevant_entries,
+    search_rulebook
+)
 
 app = FastAPI(title="ChessRL API")
 
@@ -26,18 +53,26 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_db()
-    print("ChessRL API ready.")
+    preload_puzzles()   # load once here, not on first user request
+    print("ChessRL API ready for deployment.")
 
 
 class PGNRequest(BaseModel):
     pgn: str
     user_id: str = "default_user"
+    personality: str = "friendly"
 
 
 class EngineMoveRequest(BaseModel):
     fen: str
     move: str
     difficulty: str = "easy"
+
+
+class RulesChatRequest(BaseModel):
+    question: str
+    rulebook_content: str = ""
+    history: list = []
 
 
 class ChatRequest(BaseModel):
@@ -47,12 +82,7 @@ class ChatRequest(BaseModel):
     history: list = []
     context_source: str = "pgn_analysis"
     play_context: Optional[dict] = None
-
-
-class RulesChatRequest(BaseModel):
-    question: str
-    rulebook_content: str = ""
-    history: list = []
+    personality: str = "encouraging"
 
 
 @app.post("/upload_pgn")
@@ -60,18 +90,28 @@ def upload_pgn(req: PGNRequest):
     if not req.pgn.strip():
         raise HTTPException(status_code=400, detail="PGN is empty")
 
+    import time
+    t0 = time.time()
     analysis = analyze_pgn(req.pgn)
+    print(f"[TIMING] analyze_pgn: {time.time()-t0:.1f}s")
     if "error" in analysis:
         raise HTTPException(status_code=500, detail=analysis["error"])
 
+    t1 = time.time()
     game_id = save_game_analysis(req.user_id, req.pgn, analysis)
     profile = get_player_profile(req.user_id)
+    print(f"[TIMING] db save+fetch: {time.time()-t1:.1f}s")
 
     games_played = profile["games_played"] if profile else 1
     est_elo = profile["est_elo"] if profile else 1000
 
+    t2 = time.time()
     puzzles = get_puzzles(profile["primary_weakness"], est_elo) if games_played >= 3 else []
-    chatbot_opening = get_opening_message(analysis, profile or {})
+    print(f"[TIMING] puzzles: {time.time()-t2:.1f}s")
+
+    t3 = time.time()
+    chatbot_opening = get_opening_message(analysis, profile or {}, personality=req.personality)
+    print(f"[TIMING] chatbot opening: {time.time()-t3:.1f}s")
 
     return {
         "game_id": game_id,
@@ -130,6 +170,31 @@ def get_user_puzzles(user_id: str, n: int = 5):
     }
 
 
+@app.get("/profile/{user_id}/history")
+def profile_history(user_id: str):
+    conn = get_connection()
+    c = conn.cursor()
+    # Uses execute_query helper for Postgres parameter binding compatibility (%s vs ?)
+    execute_query(c, """
+        SELECT played_at, blunders, mistakes, inaccuracies,
+               avg_cp_loss, primary_weakness,
+               CASE
+                   WHEN avg_cp_loss < 20  THEN 2200
+                   WHEN avg_cp_loss < 40  THEN 1800
+                   WHEN avg_cp_loss < 60  THEN 1500
+                   WHEN avg_cp_loss < 80  THEN 1200
+                   WHEN avg_cp_loss < 120 THEN 1000
+                   ELSE 800
+               END as est_elo
+        FROM games
+        WHERE user_id = ?
+        ORDER BY played_at ASC
+    """, (user_id,))
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return {"history": rows}
+
+
 @app.post("/chat")
 def chat(req: ChatRequest):
     if req.context_source == "play_engine":
@@ -142,6 +207,7 @@ def chat(req: ChatRequest):
             chat_history=req.history,
             play_context=req.play_context,
             user_id=req.user_id,
+            personality=req.personality
         )
         return {"response": response}
 
@@ -160,6 +226,7 @@ def chat(req: ChatRequest):
         chat_history=req.history,
         play_context=None,
         user_id=req.user_id,
+        personality=req.personality
     )
     return {"response": response}
 
