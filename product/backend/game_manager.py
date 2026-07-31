@@ -2,12 +2,12 @@ import chess
 from engine import ChessEngine
 
 class GameManager:
-    def __init__(self, difficulty="easy", fen=None):
+    def __init__(self, difficulty="easy", fen=None, engine_type="stockfish"):
         if fen:
             self.board = chess.Board(fen)
         else:
             self.board = chess.Board()
-        self.engine = ChessEngine(difficulty)
+        self.engine = ChessEngine(difficulty=difficulty, engine_type=engine_type)
 
     def play_user_move(self, move_uci):
         try:
@@ -20,13 +20,11 @@ class GameManager:
         return {"success": True, "message": "Move played"}
 
     def play_engine_move(self):
-        if self.board.is_game_over():
-            return None
         engine_move = self.engine.get_move(self.board)
-        if engine_move is None:
-            return None
+        if isinstance(engine_move, str):
+            engine_move = chess.Move.from_uci(engine_move)
         self.board.push(engine_move)
-        return str(engine_move)
+        return engine_move.uci()
 
     def get_board(self):
         return self.board
