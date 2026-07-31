@@ -1,7 +1,24 @@
-python-chess
-torch
-numpy
-zstandard
-pickle5
-tqdm
+# ChessRL — Product Side Requirements
+# Install with: pip install -r requirements.txt
 
+# Chess
+python-chess==1.999
+
+# Backend
+fastapi==0.111.0
+uvicorn==0.30.1
+pydantic==2.7.1
+python-dotenv==1.0.1
+
+# Frontend
+streamlit==1.35.0
+streamlit-image-coordinates==0.1.6
+
+# Data
+pandas==2.2.2
+
+# HTTP
+requests==2.32.3
+
+# Database
+psycopg2-binary==2.9.9
