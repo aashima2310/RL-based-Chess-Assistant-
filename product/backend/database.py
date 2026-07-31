@@ -2,7 +2,6 @@ import os
 import json
 from datetime import datetime
 
-# Detect environment: Railway provides DATABASE_URL, local testing will fall back to None
 DATABASE_URL = os.getenv("DATABASE_URL")
 IS_POSTGRES = DATABASE_URL and DATABASE_URL.startswith("postgres")
 
@@ -11,13 +10,11 @@ if IS_POSTGRES:
     from psycopg2.extras import RealDictCursor
 else:
     import sqlite3
-    # Ensure the data directory exists locally
     DB_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
     os.makedirs(DB_DIR, exist_ok=True)
     DB_PATH = os.path.join(DB_DIR, "chessrl.db")
 
 def get_connection():
-    """Returns a connection tailored to the active database environment."""
     if IS_POSTGRES:
         return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     else:
@@ -26,7 +23,6 @@ def get_connection():
         return conn
 
 def execute_query(cursor, query, params=()):
-    """Helper to translate SQLite syntax (?) to PostgreSQL syntax (%s)."""
     if IS_POSTGRES:
         query = query.replace("?", "%s")
     cursor.execute(query, params)
@@ -35,11 +31,8 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
     
-    # Handle dialect differences for auto-incrementing primary keys
     id_type = "SERIAL" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
-    pk_type = "INTEGER PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY" # SERIAL already implies PK, but we'll structure cleanly
     
-    # Table 1: Players
     c.execute("""
         CREATE TABLE IF NOT EXISTS players (
             user_id      TEXT PRIMARY KEY,
@@ -50,23 +43,21 @@ def init_db():
         )
     """)
     
-    # Table 2: Games
     c.execute(f"""
         CREATE TABLE IF NOT EXISTS games (
-            id            {id_type if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
-            user_id       TEXT,
-            played_at     TEXT,
-            pgn           TEXT,
-            blunders      INTEGER,
-            mistakes      INTEGER,
-            inaccuracies  INTEGER,
-            avg_cp_loss   REAL,
+            id               {id_type if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+            user_id          TEXT,
+            played_at        TEXT,
+            pgn              TEXT,
+            blunders         INTEGER,
+            mistakes         INTEGER,
+            inaccuracies     INTEGER,
+            avg_cp_loss      REAL,
             primary_weakness TEXT,
-            analysis_json TEXT
+            analysis_json    TEXT
         )
     """)
     
-    # Table 3: Mistakes
     c.execute(f"""
         CREATE TABLE IF NOT EXISTS mistakes (
             id             {id_type if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
@@ -94,8 +85,6 @@ def save_game_analysis(user_id, pgn, analysis):
     c = conn.cursor()
     summary = analysis["summary"]
     
-    # PostgreSQL requires a slightly different UPSERT syntax if using older versions, 
-    # but ON CONFLICT DO UPDATE is supported in both modern SQLite and Postgres.
     execute_query(c, """
         INSERT INTO players (user_id, games_played, created_at)
         VALUES (?, 1, ?)
@@ -109,7 +98,6 @@ def save_game_analysis(user_id, pgn, analysis):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     
-    # PostgreSQL needs RETURNING id, SQLite can use lastrowid
     if IS_POSTGRES:
         insert_game_query = insert_game_query.replace("?", "%s") + " RETURNING id"
         c.execute(insert_game_query, (
