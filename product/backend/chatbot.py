@@ -4,13 +4,10 @@ import chess
 from typing import Optional
 from dotenv import load_dotenv
 
-# Find the absolute path to your .env file
 dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 
-# The magic fix: "utf-8-sig" automatically strips the BOM if it exists!
 load_dotenv(dotenv_path, encoding="utf-8-sig")
 
-# Groq Client Setup
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 try:
     from groq import Groq
@@ -24,7 +21,6 @@ MAX_RETRIES = 2
 
 from rulebook import search_rulebook
 
-# ── Personalities ──────────────────────────────────────────────
 PERSONALITIES = {
     "encouraging": {
         "label": "Encouraging",
@@ -52,7 +48,6 @@ DEFAULT_PERSONALITY = "encouraging"
 def get_personality(key: str) -> dict:
     return PERSONALITIES.get(key, PERSONALITIES[DEFAULT_PERSONALITY])
 
-# ── Granular Intents ──────────────────────────────────────────
 INTENT_SUMMARY        = "summary"          # Python only
 INTENT_MOVE_DETAILS   = "move_details"     # Python only
 INTENT_BEST_MOVE      = "best_move"        # Python only
@@ -81,14 +76,12 @@ _MOVE_NUMBER_PATTERN = re.compile(r'\bmove\s*#?(\d+)\b', re.IGNORECASE)
 def detect_intent(question: str) -> str:
     q = question.lower()
     
-    # 1. Catch multi-move/plural requests FIRST
     is_multi = any(k in q for k in ["all", "every", "each", "moves", "mistakes", "blunders", "wrong moves"])
     is_best_or_detail = any(k in q for k in _BEST_MOVE_KEYWORDS) or any(k in q for k in _MOVE_DETAILS_KEYWORDS)
     
     if is_multi and is_best_or_detail:
         return INTENT_ALL_BEST_MOVES
         
-    # 2. Single-move & general routing
     if any(k in q for k in _CURRENT_GAME_KEYWORDS): return INTENT_MOVE_DETAILS
     if any(k in q for k in _SUMMARY_KEYWORDS): return INTENT_SUMMARY
     if any(k in q for k in _BEST_MOVE_KEYWORDS): return INTENT_BEST_MOVE
@@ -101,7 +94,6 @@ def detect_intent(question: str) -> str:
     
     return INTENT_GENERAL
 
-# ── Move Extractors and Validators ────────────────────────────
 
 def _extract_move_number(question: str, chat_history: list) -> Optional[int]:
     m = _MOVE_NUMBER_PATTERN.search(question)
@@ -143,7 +135,6 @@ def _find_move(moves_data: list, move_number: Optional[int]) -> Optional[dict]:
         return max(bad, key=lambda m: m["cp_loss"])
     return None
 
-# ── Pure-Python Instant Answers ───────────────────────────────
 
 def _answer_summary(game_analysis: dict) -> str:
     s = game_analysis.get("summary", {})
@@ -208,7 +199,6 @@ def get_opening_message(game_analysis: dict, player_profile: dict, personality: 
     tone = get_personality(personality)
     return _answer_summary(game_analysis) + " Ask me about any specific move, or type 'why' for a deeper explanation! " + tone["greeting_suffix"]
 
-# ── RAG Data Builders (Mid-Eval Architecture) ─────────────────
 
 def _get_system_header(personality: str) -> str:
     tone = get_personality(personality)
@@ -370,7 +360,6 @@ def _format_history(chat_history: list) -> str:
         lines.append(f"{role}: {msg['content']}")
     return "\n".join(lines)
 
-# ── LLM Calls & Fallbacks ─────────────────────────────────────
 
 def call_llm(prompt: str, max_tokens: int = 300) -> str:
     if groq_client is None:
@@ -390,11 +379,9 @@ def call_llm(prompt: str, max_tokens: int = 300) -> str:
 def call_llm_fast(prompt: str) -> str:
     return call_llm(prompt, max_tokens=180)
 
-# Backward-compatibility aliases for existing imports in main.py
 call_ollama_fast = call_llm_fast
 _call_ollama = call_llm
 
-# ── Main Entry Point ──────────────────────────────────────────
 
 def answer_question(
     question: str,
@@ -406,7 +393,6 @@ def answer_question(
     personality: str = DEFAULT_PERSONALITY
 ) -> str:
     
-    # Live play mode
     if play_context is not None:
         play_section = _build_play_engine_section(play_context)
         history_text = _format_history(chat_history)
@@ -419,7 +405,6 @@ def answer_question(
         response = call_llm(prompt, max_tokens=200)
         return response if not response.startswith("GROQ") else "I'm having trouble analyzing the live game right now. Please try again in a moment."
 
-    # Move Validation Logic
     moves_data = game_analysis.get("moves", [])
     move_num = _extract_move_number(question, chat_history)
     
@@ -428,16 +413,13 @@ def answer_question(
         if valid_nums and move_num not in valid_nums:
             return f"Move {move_num} wasn't played in this game. This game only has {len(moves_data)} moves."
 
-    # Piece Validation Logic
     allowed_moves = _build_allowed_moves(moves_data)
     for qm in _extract_piece_moves(question):
         if allowed_moves and qm.rstrip('+#') not in {m.rstrip('+#') for m in allowed_moves}:
             return f"{qm} was not played in this game. Would you like to ask about a move that was actually played?"
 
-    # Routing based on Intent
     intent = detect_intent(question)
 
-    # -- Fast Paths (No LLM Required) --
     if intent == INTENT_SUMMARY:
         return _answer_summary(game_analysis)
     if intent == INTENT_ALL_BEST_MOVES:
@@ -449,7 +431,6 @@ def answer_question(
     if intent == INTENT_IMPROVEMENT:
         return _answer_improvement(game_analysis)
 
-    # -- RAG Paths (Requires LLM) --
     for attempt in range(MAX_RETRIES):
         prompt = _build_prompt_for_intent(
             intent, question, game_analysis, player_profile, chat_history, user_id, personality
@@ -462,7 +443,6 @@ def answer_question(
         if _validate_no_hallucination(response, allowed_moves):
             return response
 
-        # Add correction context for retry if hallucinations detected
         chat_history = chat_history + [{
             "role": "system",
             "content": "[Note: previous response mentioned moves not in the game. Be more careful.]"
