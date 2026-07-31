@@ -1,14 +1,7 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import os
 import sys
-
-sys.path.append('/content/repo')
-from RL.chess_env.features import HalfKPExtractor
+from features import HalfKPExtractor
 
 _extractor = HalfKPExtractor()
-
 
 class NNUE(nn.Module):
     def __init__(self, input_size=40960):
