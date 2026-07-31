@@ -179,11 +179,11 @@ def play_move_with_backend(user_move):
 
     user_captured = get_captured_piece_data(board_before_user, user_move)
 
-    MIN_THINK_TIME = 2.0  # seconds — add this line
+    MIN_THINK_TIME = 2.0  # seconds
 
     try:
         with st.spinner("Engine thinking..."):
-            start = time.time()                                          # ← add
+            start = time.time()
 
             resp = requests.post(
                 f"{API_URL}/engine_move",
@@ -191,20 +191,21 @@ def play_move_with_backend(user_move):
                     "fen": old_fen,
                     "move": user_move,
                     "difficulty": st.session_state.play_difficulty.lower(),
+                    # Send configured engine type to backend
+                    "engine_type": "stockfish" if st.session_state.play_engine_type == "Stockfish" else "custom"
                 },
                 timeout=120,
             )
 
-            elapsed = time.time() - start                                 # ← add
-            if elapsed < MIN_THINK_TIME:                                  # ← add
-                time.sleep(MIN_THINK_TIME - elapsed)                      # ← add
+            elapsed = time.time() - start
+            if elapsed < MIN_THINK_TIME:
+                time.sleep(MIN_THINK_TIME - elapsed)
 
         if resp.status_code == 200:
             data = resp.json()
 
             if data.get("success"):
                 engine_move = data.get("engine_move")
-
                 engine_captured = None
 
                 try:
@@ -514,6 +515,8 @@ if "play_history" not in st.session_state:
     st.session_state.play_history = []
 if "play_difficulty" not in st.session_state:
     st.session_state.play_difficulty = "Easy"
+if "play_engine_type" not in st.session_state:
+    st.session_state.play_engine_type = "Stockfish"
 if "play_selected_square" not in st.session_state:
     st.session_state.play_selected_square = None
 if "play_status_message" not in st.session_state:
@@ -809,6 +812,13 @@ elif page == "♟ Play Engine":
 
         st.divider()
         st.subheader("Controls")
+
+        # Engine Selector Addition
+        st.session_state.play_engine_type = st.selectbox(
+            "Select Opponent",
+            ["Stockfish", "Custom AI"],
+            index=["Stockfish", "Custom AI"].index(st.session_state.play_engine_type)
+        )
 
         difficulty = st.selectbox(
             "Select Difficulty",
