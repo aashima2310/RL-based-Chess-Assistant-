@@ -15,7 +15,7 @@ COPY RL RL
 COPY product product
 
 # Download model weights at build time (too big for GitHub). Edit YOUR_USERNAME.
-RUN mkdir -p product/backend/models && python -c "import urllib.request; urllib.request.urlretrieve('https://huggingface.co/akshay1-1/chessrl-model/resolve/main/value_clean_best.pt', 'product/backend/models/value_clean_best.pt')"
+RUN mkdir -p product/backend/models && python -c "import urllib.request; urllib.request.urlretrieve('https://huggingface.co/akshay1-1/chessrl-model/resolve/main/value_clean_best.pth', 'product/backend/models/value_clean_best.pt')"
 
 WORKDIR /app/product/backend
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
