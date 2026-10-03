@@ -83,3 +83,6 @@ def get_puzzles(weakness, user_elo, n=5, elo_range=150):
 
     sample = filtered.sample(min(n, len(filtered)))
     return [_format_puzzle(row, theme) for _, row in sample.iterrows()]
+
+def preload_puzzles():
+    _load_puzzles()
