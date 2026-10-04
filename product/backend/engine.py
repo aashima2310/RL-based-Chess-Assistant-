@@ -492,18 +492,12 @@ class CustomEngine:
                     else 0
                 )
 
-                see = self._see(
-                    board,
-                    move
-                )
+            score += 300000
+            score += victim_value * 100
+            score -= attacker_value
 
-                score += 300000
-                score += victim_value * 100
-                score -= attacker_value
-                score += see * 100
-
-                if see >= 0:
-                    score += 50000
+            if victim_value >= attacker_value:
+                score += 50000
 
             key = self._move_key(move)
 
