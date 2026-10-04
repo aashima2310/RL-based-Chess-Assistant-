@@ -51,6 +51,10 @@ app.add_middleware(
 )
 
 
+from auth_games import router as auth_router
+app.include_router(auth_router)
+
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -526,4 +530,3 @@ def rulebook_entry(entry_id: str):
 @app.get("/api/rulebook/{entry_id}")
 def api_rulebook_entry(entry_id: str):
     return rulebook_entry(entry_id)
-
