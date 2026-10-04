@@ -377,7 +377,7 @@ def list_played_games(
         FROM played_games
         WHERE user_id = ?
         ORDER BY id DESC
-        LIMIT 50
+        LIMIT 500
         """,
         (u,),
     )
