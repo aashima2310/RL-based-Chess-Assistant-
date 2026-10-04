@@ -41,27 +41,29 @@ def _format_puzzle(row, theme):
     }
 
 def _mock_puzzles(weakness, user_elo, n):
+    # Fallback puzzles (used when the Lichess CSV is not deployed). All lines verified legal.
+    theme = WEAKNESS_TO_THEME.get(weakness, "middlegame")
     return [
         {
             "puzzle_id": "mock_001",
-            "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
-            "moves": ["f3e5", "d8g5", "e5f7"],
-            "first_move": "f3e5",
-            "solution": ["d8g5", "e5f7"],
+            "fen": "r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3",
+            "moves": ["g8f6", "h5f7"],
+            "first_move": "g8f6",
+            "solution": ["h5f7"],
             "rating": user_elo,
-            "theme": WEAKNESS_TO_THEME.get(weakness, "middlegame"),
-            "themes_all": "fork hangingPiece",
+            "theme": theme,
+            "themes_all": "mateIn1 short",
             "url": "https://lichess.org",
         },
         {
             "puzzle_id": "mock_002",
-            "fen": "r2qkb1r/ppp2ppp/2n1pn2/3p4/2PP4/2N2N2/PP2PPPP/R1BQKB1R w KQkq - 0 6",
-            "moves": ["d1a4", "c6d4", "a4d4"],
-            "first_move": "d1a4",
-            "solution": ["c6d4", "a4d4"],
+            "fen": "rn1qkbnr/ppp2ppp/3p4/4p3/2B1P1b1/2N2N2/PPPP1PPP/R1BQK2R b KQkq - 3 4",
+            "moves": ["g7g6", "f3e5", "g4d1", "c4f7", "e8e7", "c3d5"],
+            "first_move": "g7g6",
+            "solution": ["f3e5", "g4d1", "c4f7", "e8e7", "c3d5"],
             "rating": user_elo + 50,
-            "theme": WEAKNESS_TO_THEME.get(weakness, "middlegame"),
-            "themes_all": "pin hangingPiece",
+            "theme": theme,
+            "themes_all": "mateIn3 sacrifice",
             "url": "https://lichess.org",
         },
     ][:n]
