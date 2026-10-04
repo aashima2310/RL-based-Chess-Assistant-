@@ -16,6 +16,13 @@ DEFAULT_MODEL_PATH = os.path.join(
     "value_clean_best.pt"
 )
 
+MATE_SCORE = 100000
+INF = 1000000
+MAX_DEPTH = 6
+NODE_LIMIT = 60000
+QUIESCENCE_DEPTH = 8
+TT_MAX_SIZE = 200000
+
 
 class StockfishEngine:
 
@@ -40,7 +47,6 @@ class CustomEngine:
         self.model = NNUE_AlphaZero()
         self.loaded = False
         self._fallback = None
-        self._value_cache = {}
 
         self.book = OpeningBook(
             os.path.join(
@@ -50,22 +56,34 @@ class CustomEngine:
             )
         )
 
+        self._value_cache = {}
+        self._tt = {}
+        self._history = {}
+        self._killers = {}
+        self._root_policy = {}
+        self._nodes = 0
+        self._stop = False
+
         if os.path.exists(self.model_path):
             try:
                 self.model.load_weights(
                     self.model_path,
                     device="cpu"
                 )
+
                 self.model.eval()
                 self.loaded = True
+
                 print(
                     f"Loaded custom RL model from "
                     f"{self.model_path}"
                 )
+
             except Exception as e:
                 print(
                     f"Failed to load custom model weights: {e}"
                 )
+
         else:
             print(
                 f"Model file not found at "
@@ -77,19 +95,19 @@ class CustomEngine:
         if not self.loaded:
             print(
                 "RL engine unavailable: falling back to "
-                "Stockfish (medium) instead of random moves."
+                "MCTS medium."
             )
 
     @staticmethod
     def _piece_value(piece_type):
         return {
-            chess.PAWN: 1.0,
-            chess.KNIGHT: 3.2,
-            chess.BISHOP: 3.3,
-            chess.ROOK: 5.0,
-            chess.QUEEN: 9.0,
-            chess.KING: 100.0
-        }.get(piece_type, 0.0)
+            chess.PAWN: 100,
+            chess.KNIGHT: 320,
+            chess.BISHOP: 330,
+            chess.ROOK: 500,
+            chess.QUEEN: 900,
+            chess.KING: 20000
+        }.get(piece_type, 0)
 
     @staticmethod
     def _captured_piece(board, move):
@@ -106,134 +124,22 @@ class CustomEngine:
 
         return None
 
-    def _static_exchange_gain(
-        self,
-        board,
-        move,
-        depth=0
-    ):
-        if depth >= 8:
-            return 0.0
-
-        captured = self._captured_piece(
-            board,
-            move
+    @staticmethod
+    def _position_key(board):
+        return (
+            board.board_fen(),
+            board.turn,
+            board.castling_rights,
+            board.ep_square
         )
 
-        if captured is None:
-            return 0.0
-
-        captured_value = self._piece_value(
-            captured.piece_type
+    @staticmethod
+    def _move_key(move):
+        return (
+            move.from_square,
+            move.to_square,
+            move.promotion
         )
-
-        next_board = board.copy(
-            stack=False
-        )
-
-        try:
-            next_board.push(move)
-        except Exception:
-            return -100.0
-
-        target = move.to_square
-
-        opponent_recapture = self._see_recapture(
-            next_board,
-            target,
-            depth + 1
-        )
-
-        return captured_value - opponent_recapture
-
-    def _see_recapture(
-        self,
-        board,
-        target,
-        depth=0
-    ):
-        if depth >= 8:
-            return 0.0
-
-        target_piece = board.piece_at(target)
-
-        if target_piece is None:
-            return 0.0
-
-        captures = [
-            move
-            for move in board.legal_moves
-            if move.to_square == target
-        ]
-
-        if not captures:
-            return 0.0
-
-        captures.sort(
-            key=lambda move: self._piece_value(
-                board.piece_at(
-                    move.from_square
-                ).piece_type
-            )
-            if board.piece_at(move.from_square)
-            else 100.0
-        )
-
-        best_gain = 0.0
-
-        for capture in captures:
-            captured_piece = board.piece_at(target)
-
-            if captured_piece is None:
-                continue
-
-            captured_value = self._piece_value(
-                captured_piece.piece_type
-            )
-
-            next_board = board.copy(
-                stack=False
-            )
-
-            try:
-                next_board.push(capture)
-            except Exception:
-                continue
-
-            opponent_gain = self._see_recapture(
-                next_board,
-                target,
-                depth + 1
-            )
-
-            gain = captured_value - opponent_gain
-
-            if gain > best_gain:
-                best_gain = gain
-
-        return best_gain
-
-    def _is_piece_hanging(
-        self,
-        board,
-        square
-    ):
-        piece = board.piece_at(square)
-
-        if piece is None:
-            return False
-
-        for capture in board.legal_moves:
-            if capture.to_square != square:
-                continue
-
-            if self._static_exchange_gain(
-                board,
-                capture
-            ) > 0.35:
-                return True
-
-        return False
 
     def _network_value(self, board):
         key = board.fen()
@@ -242,12 +148,7 @@ class CustomEngine:
             return self._value_cache[key]
 
         black = board.turn == chess.BLACK
-
-        canon = (
-            board.mirror()
-            if black
-            else board
-        )
+        canon = board.mirror() if black else board
 
         try:
             w_idx = self.extractor.get_halfkp_indices(
@@ -260,16 +161,12 @@ class CustomEngine:
                 chess.BLACK
             )
 
-            w_acc = (
-                self.model.backbone.refresh_accumulator(
-                    w_idx
-                )
+            w_acc = self.model.backbone.refresh_accumulator(
+                w_idx
             )
 
-            b_acc = (
-                self.model.backbone.refresh_accumulator(
-                    b_idx
-                )
+            b_acc = self.model.backbone.refresh_accumulator(
+                b_idx
             )
 
             with torch.no_grad():
@@ -296,19 +193,15 @@ class CustomEngine:
 
         self._value_cache[key] = value
 
-        if len(self._value_cache) > 5000:
+        if len(self._value_cache) > 10000:
             self._value_cache.pop(
                 next(iter(self._value_cache))
             )
 
         return value
 
-    def _material_score(
-        self,
-        board,
-        root_color
-    ):
-        score = 0.0
+    def _material_cp(self, board):
+        score = 0
 
         for square in chess.SQUARES:
             piece = board.piece_at(square)
@@ -320,112 +213,80 @@ class CustomEngine:
                 piece.piece_type
             )
 
-            if piece.color == root_color:
+            if piece.color == board.turn:
                 score += value
             else:
                 score -= value
 
         return score
 
-    def _mobility_score(
-        self,
-        board,
-        root_color
-    ):
-        root_board = board.copy(
-            stack=False
-        )
-        root_board.turn = root_color
-
-        enemy_board = board.copy(
-            stack=False
-        )
-        enemy_board.turn = not root_color
-
-        try:
-            root_moves = root_board.legal_moves.count()
-        except Exception:
-            root_moves = 0
-
-        try:
-            enemy_moves = enemy_board.legal_moves.count()
-        except Exception:
-            enemy_moves = 0
-
-        score = (
-            root_moves - enemy_moves
-        ) / 20.0
-
-        return max(
-            -1.0,
-            min(1.0, score)
-        )
-
-    def _center_score(
-        self,
-        board,
-        root_color
-    ):
-        centers = [
+    def _center_cp(self, board):
+        centers = (
             chess.D4,
             chess.E4,
             chess.D5,
             chess.E5
-        ]
+        )
 
-        score = 0.0
+        score = 0
 
         for square in centers:
             piece = board.piece_at(square)
 
             if piece is not None:
-                value = 0.20
-
-                if piece.color == root_color:
-                    score += value
+                if piece.color == board.turn:
+                    score += 20
                 else:
-                    score -= value
+                    score -= 20
 
-            root_attackers = len(
+            own = len(
                 board.attackers(
-                    root_color,
+                    board.turn,
                     square
                 )
             )
 
-            enemy_attackers = len(
+            enemy = len(
                 board.attackers(
-                    not root_color,
+                    not board.turn,
                     square
                 )
             )
 
-            score += 0.04 * (
-                root_attackers - enemy_attackers
-            )
+            score += 5 * (own - enemy)
+
+        return score
+
+    def _mobility_cp(self, board):
+        own_moves = board.legal_moves.count()
+
+        other = board.copy(stack=False)
+        other.turn = not board.turn
+
+        if other.is_check():
+            enemy_moves = 0
+        else:
+            enemy_moves = other.legal_moves.count()
 
         return max(
-            -1.0,
-            min(1.0, score)
+            -100,
+            min(
+                100,
+                4 * (own_moves - enemy_moves)
+            )
         )
 
-    def _king_safety_score(
-        self,
-        board,
-        root_color
-    ):
-        own_king = board.king(
-            root_color
-        )
-
-        enemy_king = board.king(
-            not root_color
-        )
+    def _king_safety_cp(self, board):
+        own_king = board.king(board.turn)
+        enemy_king = board.king(not board.turn)
 
         if own_king is None or enemy_king is None:
-            return 0.0
+            return 0
 
-        score = 0.0
+        score = 0
+
+        if board.is_check():
+            score -= 180
 
         own_zone = chess.SquareSet(
             chess.BB_KING_ATTACKS[own_king]
@@ -435,732 +296,241 @@ class CustomEngine:
             chess.BB_KING_ATTACKS[enemy_king]
         )
 
-        own_king_attackers = len(
-            board.attackers(
-                not root_color,
-                own_king
-            )
-        )
-
-        enemy_king_attackers = len(
-            board.attackers(
-                root_color,
-                enemy_king
-            )
-        )
-
-        score -= (
-            0.22 * own_king_attackers
-        )
-
-        score += (
-            0.22 * enemy_king_attackers
-        )
+        own_attackers = 0
+        enemy_attackers = 0
 
         for square in own_zone:
-            score -= (
-                0.035
-                * len(
-                    board.attackers(
-                        not root_color,
-                        square
-                    )
+            enemy_attackers += len(
+                board.attackers(
+                    not board.turn,
+                    square
                 )
             )
 
         for square in enemy_zone:
-            score += (
-                0.035
-                * len(
-                    board.attackers(
-                        root_color,
-                        square
-                    )
+            own_attackers += len(
+                board.attackers(
+                    board.turn,
+                    square
                 )
             )
 
-        if board.is_check():
-            if board.turn == root_color:
-                score -= 0.55
-            else:
-                score += 0.55
-
-        if board.is_attacked_by(
-            not root_color,
-            own_king
-        ):
-            score -= 0.20
-
-        if board.is_attacked_by(
-            root_color,
-            enemy_king
-        ):
-            score += 0.20
+        score += 15 * (
+            own_attackers
+            - enemy_attackers
+        )
 
         return max(
-            -1.0,
-            min(1.0, score)
+            -250,
+            min(250, score)
         )
 
-    def _positional_score(
-        self,
-        board,
-        root_color
-    ):
-        mobility = self._mobility_score(
-            board,
-            root_color
-        )
+    def _static_eval(self, board):
+        if board.is_checkmate():
+            return -MATE_SCORE
 
-        center = self._center_score(
-            board,
-            root_color
-        )
+        if board.is_stalemate():
+            return 0
 
-        king = self._king_safety_score(
-            board,
-            root_color
-        )
+        if board.is_insufficient_material():
+            return 0
+
+        material = self._material_cp(board)
+        network = self._network_value(board)
+
+        network_cp = network * 600
+
+        mobility = self._mobility_cp(board)
+        center = self._center_cp(board)
+        king = self._king_safety_cp(board)
 
         score = (
-            0.35 * mobility
-            + 0.25 * center
-            + 0.40 * king
+            0.48 * material
+            + 0.38 * network_cp
+            + 0.06 * mobility
+            + 0.03 * center
+            + 0.05 * king
         )
 
-        return max(
-            -1.0,
-            min(1.0, score)
-        )
+        return int(score)
 
-    def _tactical_moves(self, board):
-        moves = []
-
-        for move in board.legal_moves:
-            if (
-                board.is_capture(move)
-                or board.gives_check(move)
-                or move.promotion is not None
-            ):
-                moves.append(move)
-
-        return moves
-
-    def _forcing_moves(self, board):
-        if board.is_check():
-            return list(board.legal_moves)
-
-        return self._tactical_moves(board)
-
-    def _tactical_order(
-        self,
-        board,
-        move
-    ):
-        score = 0.0
-
+    def _see(self, board, move):
         captured = self._captured_piece(
             board,
             move
         )
 
-        if captured is not None:
-            victim = self._piece_value(
-                captured.piece_type
+        if captured is None:
+            return 0
+
+        victim_value = self._piece_value(
+            captured.piece_type
+        )
+
+        attacker = board.piece_at(
+            move.from_square
+        )
+
+        if attacker is None:
+            return 0
+
+        attacker_value = self._piece_value(
+            attacker.piece_type
+        )
+
+        next_board = board.copy(stack=False)
+        next_board.push(move)
+
+        target = move.to_square
+
+        recaptures = [
+            m
+            for m in next_board.legal_moves
+            if m.to_square == target
+        ]
+
+        if not recaptures:
+            return victim_value
+
+        best_reply = -INF
+
+        for reply in recaptures:
+            gain = self._see(
+                next_board,
+                reply
             )
 
-            attacker = board.piece_at(
-                move.from_square
+            captured_again = self._captured_piece(
+                next_board,
+                reply
             )
 
-            attacker_value = (
+            if captured_again is None:
+                continue
+
+            reply_gain = (
                 self._piece_value(
-                    attacker.piece_type
+                    captured_again.piece_type
                 )
-                if attacker is not None
-                else 0.0
+                - gain
             )
 
-            see = self._static_exchange_gain(
-                board,
-                move
+            best_reply = max(
+                best_reply,
+                reply_gain
             )
 
-            score += 10.0 * victim
-            score += 5.0 * see
-            score -= 0.12 * attacker_value
+        if best_reply == -INF:
+            return victim_value
 
-        if board.gives_check(move):
-            score += 14.0
+        return victim_value - min(
+            attacker_value,
+            best_reply
+        )
 
-        if move.promotion is not None:
-            score += 25.0
+    def _is_quiet(self, board, move):
+        return not (
+            board.is_capture(move)
+            or move.promotion is not None
+            or board.gives_check(move)
+        )
 
-        return score
-
-    def _mate_score(
+    def _ordered_moves(
         self,
         board,
-        root_color,
-        ply=0
+        tt_move=None,
+        ply=0,
+        quiescence=False
     ):
-        if not board.is_checkmate():
-            return None
-
-        if board.turn == root_color:
-            return -10000.0 + ply
-
-        return 10000.0 - ply
-
-    def _quiescence(
-        self,
-        board,
-        alpha,
-        beta,
-        root_color,
-        depth=3,
-        ply=0
-    ):
-        mate = self._mate_score(
-            board,
-            root_color,
-            ply
-        )
-
-        if mate is not None:
-            return mate
-
-        if board.is_stalemate():
-            return 0.0
-
-        stand_pat = self._material_score(
-            board,
-            root_color
-        )
-
-        if depth <= 0:
-            return stand_pat
-
-        maximizing = (
-            board.turn == root_color
-        )
-
-        if board.is_check():
-            moves = list(board.legal_moves)
-        else:
-            moves = self._tactical_moves(
-                board
-            )
-
-        if not moves:
-            return stand_pat
-
-        moves.sort(
-            key=lambda move: self._tactical_order(
-                board,
-                move
-            ),
-            reverse=True
-        )
-
-        moves = moves[:10]
-
-        if maximizing:
-            best = stand_pat
-
-            if not board.is_check():
-                if best >= beta:
-                    return best
-
-                alpha = max(
-                    alpha,
-                    best
-                )
-
-            for move in moves:
-                next_board = board.copy(
-                    stack=False
-                )
-                next_board.push(move)
-
-                score = self._quiescence(
-                    next_board,
-                    alpha,
-                    beta,
-                    root_color,
-                    depth - 1,
-                    ply + 1
-                )
-
-                best = max(
-                    best,
-                    score
-                )
-
-                alpha = max(
-                    alpha,
-                    best
-                )
-
-                if alpha >= beta:
-                    break
-
-            return best
-
-        best = stand_pat
-
-        if not board.is_check():
-            if best <= alpha:
-                return best
-
-            beta = min(
-                beta,
-                best
-            )
-
-        for move in moves:
-            next_board = board.copy(
-                stack=False
-            )
-            next_board.push(move)
-
-            score = self._quiescence(
-                next_board,
-                alpha,
-                beta,
-                root_color,
-                depth - 1,
-                ply + 1
-            )
-
-            best = min(
-                best,
-                score
-            )
-
-            beta = min(
-                beta,
-                best
-            )
-
-            if alpha >= beta:
-                break
-
-        return best
-
-    def _tactical_search(
-        self,
-        board,
-        depth,
-        root_color,
-        alpha=-float("inf"),
-        beta=float("inf"),
-        ply=0
-    ):
-        mate = self._mate_score(
-            board,
-            root_color,
-            ply
-        )
-
-        if mate is not None:
-            return mate
-
-        if board.is_stalemate():
-            return 0.0
-
-        if depth <= 0:
-            return self._quiescence(
-                board,
-                alpha,
-                beta,
-                root_color,
-                depth=3,
-                ply=ply
-            )
-
-        moves = self._forcing_moves(
-            board
-        )
-
-        if not moves:
-            return self._quiescence(
-                board,
-                alpha,
-                beta,
-                root_color,
-                depth=2,
-                ply=ply
-            )
-
-        moves.sort(
-            key=lambda move: self._tactical_order(
-                board,
-                move
-            ),
-            reverse=True
-        )
-
-        moves = moves[:12]
-
-        maximizing = (
-            board.turn == root_color
-        )
-
-        if maximizing:
-            best = -float("inf")
-
-            for move in moves:
-                next_board = board.copy(
-                    stack=False
-                )
-                next_board.push(move)
-
-                score = self._tactical_search(
-                    next_board,
-                    depth - 1,
-                    root_color,
-                    alpha,
-                    beta,
-                    ply + 1
-                )
-
-                best = max(
-                    best,
-                    score
-                )
-
-                alpha = max(
-                    alpha,
-                    best
-                )
-
-                if alpha >= beta:
-                    break
-
-            return best
-
-        best = float("inf")
-
-        for move in moves:
-            next_board = board.copy(
-                stack=False
-            )
-            next_board.push(move)
-
-            score = self._tactical_search(
-                next_board,
-                depth - 1,
-                root_color,
-                alpha,
-                beta,
-                ply + 1
-            )
-
-            best = min(
-                best,
-                score
-            )
-
-            beta = min(
-                beta,
-                best
-            )
-
-            if alpha >= beta:
-                break
-
-        return best
-
-    def _tactical_score(
-        self,
-        board,
-        move
-    ):
-        root_color = board.turn
-
-        next_board = board.copy(
-            stack=False
-        )
-        next_board.push(move)
-
-        immediate_see = (
-            self._static_exchange_gain(
-                board,
-                move
-            )
-        )
-
-        before = self._material_score(
-            board,
-            root_color
-        )
-
-        future = self._tactical_search(
-            next_board,
-            2,
-            root_color
-        )
-
-        material_delta = (
-            future - before
-        )
-
-        raw = (
-            0.9 * immediate_see
-            + 0.8 * material_delta
-        )
-
-        if next_board.is_checkmate():
-            return 1.0
-
-        return math.tanh(
-            raw / 3.0
-        )
-
-    def _hanging_score(
-        self,
-        board,
-        move
-    ):
-        root_color = board.turn
-
-        next_board = board.copy(
-            stack=False
-        )
-        next_board.push(move)
-
-        own_gain = max(
-            0.0,
-            self._static_exchange_gain(
-                board,
-                move
-            )
-        )
-
-        lost = 0.0
-
-        for reply in next_board.legal_moves:
-            captured = self._captured_piece(
-                next_board,
-                reply
-            )
-
-            if captured is None:
-                continue
-
-            gain = self._static_exchange_gain(
-                next_board,
-                reply
-            )
-
-            if gain > lost:
-                lost = gain
-
-        if next_board.is_checkmate():
-            return 1.0
-
-        raw = (
-            own_gain - lost
-        )
-
-        return math.tanh(
-            raw / 2.5
-        )
-
-    def _mate_threat_score(
-        self,
-        board,
-        root_color
-    ):
-        if board.is_checkmate():
-            if board.turn == root_color:
-                return -1.0
-            return 1.0
-
-        if board.is_stalemate():
-            return 0.0
-
-        if board.turn == root_color:
-            for move in board.legal_moves:
-                test = board.copy(
-                    stack=False
-                )
-                test.push(move)
-
-                if test.is_checkmate():
-                    return 1.0
-
-            checks = sum(
-                1
-                for move in board.legal_moves
-                if board.gives_check(move)
-            )
-
-            return min(
-                1.0,
-                checks / 5.0
-            )
-
-        for move in board.legal_moves:
-            test = board.copy(
-                stack=False
-            )
-            test.push(move)
-
-            if test.is_checkmate():
-                return -1.0
-
-        checks = sum(
-            1
-            for move in board.legal_moves
-            if board.gives_check(move)
-        )
-
-        return max(
-            -1.0,
-            -checks / 7.0
-        )
-
-    def _forcing_count(self, board):
-        checks = 0
-        captures = 0
-
-        for move in board.legal_moves:
-            if board.is_capture(move):
-                captures += 1
-
-            if board.gives_check(move):
-                checks += 1
-
-        return (
-            captures
-            + 2 * checks
-        )
-
-    def _weights(self, board):
-        volatility = self._forcing_count(
-            board
-        )
-
-        if board.is_check() or volatility >= 5:
-            return {
-                "policy": 0.04,
-                "tactical": 0.32,
-                "value": 0.07,
-                "hanging": 0.13,
-                "king": 0.18,
-                "mate": 0.15,
-                "positional": 0.03,
-                "blunder": 0.08
-            }
-
-        return {
-            "policy": 0.08,
-            "tactical": 0.20,
-            "value": 0.14,
-            "hanging": 0.10,
-            "king": 0.18,
-            "mate": 0.13,
-            "positional": 0.10,
-            "blunder": 0.07
-        }
-
-    def _blunder_penalty(
-        self,
-        board,
-        move
-    ):
-        next_board = board.copy(
-            stack=False
-        )
-        next_board.push(move)
-
-        if next_board.is_checkmate():
-            return 0.0
-
-        worst_capture = 0.0
-
-        for reply in next_board.legal_moves:
-            captured = self._captured_piece(
-                next_board,
-                reply
-            )
-
-            if captured is None:
-                continue
-
-            gain = self._static_exchange_gain(
-                next_board,
-                reply
-            )
-
-            worst_capture = max(
-                worst_capture,
-                gain
-            )
-
-        opponent_mate = False
-
-        for reply in next_board.legal_moves:
-            test = next_board.copy(
-                stack=False
-            )
-            test.push(reply)
-
-            if test.is_checkmate():
-                opponent_mate = True
-                break
-
-        if opponent_mate:
-            return 1.0
-
-        if worst_capture >= 8.0:
-            return 0.90
-
-        if worst_capture >= 5.0:
-            return 0.65
-
-        if worst_capture >= 3.0:
-            return 0.42
-
-        if worst_capture >= 2.0:
-            return 0.25
-
-        if worst_capture >= 1.0:
-            return 0.12
-
-        return 0.0
-
-    def _candidate_moves(
-        self,
-        board,
-        policy_probs
-    ):
-        legal_moves = list(
-            board.legal_moves
-        )
+        moves = list(board.legal_moves)
 
         scored = []
 
-        for move in legal_moves:
-            try:
-                idx = self.extractor.move_to_idx(
+        killer_moves = self._killers.get(
+            ply,
+            []
+        )
+
+        for move in moves:
+            score = 0
+
+            if tt_move is not None and move == tt_move:
+                score += 100000000
+
+            if move in killer_moves:
+                score += 500000
+
+            if board.gives_check(move):
+                score += 400000
+
+            if move.promotion is not None:
+                score += 350000
+
+            if board.is_capture(move):
+                captured = self._captured_piece(
+                    board,
                     move
                 )
 
-                probability = float(
-                    policy_probs[idx].item()
+                attacker = board.piece_at(
+                    move.from_square
                 )
 
-            except Exception:
-                probability = 0.0
+                victim_value = (
+                    self._piece_value(
+                        captured.piece_type
+                    )
+                    if captured is not None
+                    else 0
+                )
+
+                attacker_value = (
+                    self._piece_value(
+                        attacker.piece_type
+                    )
+                    if attacker is not None
+                    else 0
+                )
+
+                see = self._see(
+                    board,
+                    move
+                )
+
+                score += 300000
+                score += victim_value * 100
+                score -= attacker_value
+                score += see * 100
+
+                if see >= 0:
+                    score += 50000
+
+            key = self._move_key(move)
+
+            score += self._history.get(
+                key,
+                0
+            )
+
+            policy = self._root_policy.get(
+                move.uci(),
+                0.0
+            )
+
+            score += int(
+                policy * 10000
+            )
+
+            if quiescence:
+                if not (
+                    board.is_capture(move)
+                    or move.promotion is not None
+                    or board.gives_check(move)
+                ):
+                    continue
 
             scored.append(
-                (
-                    probability,
-                    move
-                )
+                (score, move)
             )
 
         scored.sort(
@@ -1168,247 +538,545 @@ class CustomEngine:
             reverse=True
         )
 
-        selected = [
+        return [
             move
-            for _, move in scored[:14]
+            for _, move in scored
         ]
 
-        for move in legal_moves:
-            if (
-                board.is_capture(move)
-                or board.gives_check(move)
-                or move.promotion is not None
-            ):
-                if move not in selected:
-                    selected.append(move)
-
-        return selected
-
-    def _policy_normalized(
-        self,
-        probability,
-        minimum,
-        maximum
-    ):
-        if maximum - minimum < 1e-9:
-            return 0.5
-
-        log_value = math.log(
-            max(
-                probability,
-                1e-9
-            )
-        )
-
-        log_min = math.log(
-            max(
-                minimum,
-                1e-9
-            )
-        )
-
-        log_max = math.log(
-            max(
-                maximum,
-                1e-9
-            )
-        )
-
-        denominator = (
-            log_max - log_min
-        )
-
-        if denominator < 1e-9:
-            return 0.5
-
-        value = (
-            log_value - log_min
-        ) / denominator
-
-        return max(
-            0.0,
-            min(1.0, value)
-        )
-
-    def _move_score(
-        self,
-        board,
-        move,
-        policy_value,
-        policy_min,
-        policy_max
-    ):
-        next_board = board.copy(
-            stack=False
-        )
-        next_board.push(move)
-
-        root_color = board.turn
-
-        weights = self._weights(
-            board
-        )
-
-        policy_score = self._policy_normalized(
-            policy_value,
-            policy_min,
-            policy_max
-        )
-
-        policy_score = (
-            2.0 * policy_score - 1.0
-        )
-
-        tactical_score = self._tactical_score(
-            board,
+    def _store_killer(self, ply, move):
+        if not self._is_quiet(
+            self._current_board,
             move
-        )
-
-        hanging_score = self._hanging_score(
-            board,
-            move
-        )
-
-        value_score = self._network_value(
-            next_board
-        )
-
-        if root_color == chess.BLACK:
-            value_score = -value_score
-
-        positional_score = self._positional_score(
-            next_board,
-            root_color
-        )
-
-        king_score = self._king_safety_score(
-            next_board,
-            root_color
-        )
-
-        mate_score = self._mate_threat_score(
-            next_board,
-            root_color
-        )
-
-        penalty = self._blunder_penalty(
-            board,
-            move
-        )
-
-        score = (
-            weights["policy"]
-            * policy_score
-            + weights["tactical"]
-            * tactical_score
-            + weights["value"]
-            * value_score
-            + weights["hanging"]
-            * hanging_score
-            + weights["king"]
-            * king_score
-            + weights["mate"]
-            * mate_score
-            + weights["positional"]
-            * positional_score
-            - weights["blunder"]
-            * penalty
-        )
-
-        if next_board.is_checkmate():
-            score += 2.0
-
-        if board.gives_check(move):
-            score += 0.10
-
-        captured = self._captured_piece(
-            board,
-            move
-        )
-
-        if captured is not None:
-            see = self._static_exchange_gain(
-                board,
-                move
-            )
-
-            if see > 0:
-                score += min(
-                    0.20,
-                    see / 20.0
-                )
-
-        return score
-
-    def _evaluate_candidates(
-        self,
-        board,
-        candidates,
-        policy_probs
-    ):
-        values = []
-        policy_values = []
-
-        for move in candidates:
-            try:
-                idx = self.extractor.move_to_idx(
-                    move
-                )
-
-                probability = float(
-                    policy_probs[idx].item()
-                )
-
-            except Exception:
-                probability = 0.0
-
-            policy_values.append(
-                probability
-            )
-
-        if not policy_values:
-            return []
-
-        policy_min = min(
-            policy_values
-        )
-
-        policy_max = max(
-            policy_values
-        )
-
-        for move, probability in zip(
-            candidates,
-            policy_values
         ):
-            score = self._move_score(
-                board,
-                move,
-                probability,
-                policy_min,
-                policy_max
+            return
+
+        killers = self._killers.setdefault(
+            ply,
+            []
+        )
+
+        if move in killers:
+            return
+
+        killers.insert(
+            0,
+            move
+        )
+
+        if len(killers) > 2:
+            del killers[2:]
+
+    def _update_history(self, move, depth):
+        key = self._move_key(move)
+
+        self._history[key] = (
+            self._history.get(key, 0)
+            + depth * depth
+        )
+
+        if self._history[key] > 100000:
+            self._history[key] //= 2
+
+    def _terminal_score(self, board, ply):
+        if board.is_checkmate():
+            return -MATE_SCORE + ply
+
+        if board.is_stalemate():
+            return 0
+
+        if board.is_insufficient_material():
+            return 0
+
+        if board.halfmove_clock >= 100:
+            return 0
+
+        return None
+
+    def _quiescence(
+        self,
+        board,
+        alpha,
+        beta,
+        ply,
+        qdepth,
+        path
+    ):
+        self._nodes += 1
+
+        if self._nodes >= NODE_LIMIT:
+            self._stop = True
+            return self._static_eval(board)
+
+        terminal = self._terminal_score(
+            board,
+            ply
+        )
+
+        if terminal is not None:
+            return terminal
+
+        key = self._position_key(board)
+
+        if path.get(key, 0) >= 2:
+            return 0
+
+        in_check = board.is_check()
+
+        if not in_check:
+            stand_pat = self._static_eval(
+                board
             )
 
-            values.append(
-                (
-                    score,
-                    probability,
-                    move
+            if stand_pat >= beta:
+                return stand_pat
+
+            if stand_pat > alpha:
+                alpha = stand_pat
+
+            if qdepth <= 0:
+                return stand_pat
+
+            moves = self._ordered_moves(
+                board,
+                ply=ply,
+                quiescence=True
+            )
+        else:
+            moves = self._ordered_moves(
+                board,
+                ply=ply,
+                quiescence=False
+            )
+
+        if not moves:
+            return self._static_eval(board)
+
+        best = -INF
+
+        for move in moves:
+            if self._stop:
+                break
+
+            if (
+                not in_check
+                and board.is_capture(move)
+                and move.promotion is None
+            ):
+                if self._see(board, move) < -100:
+                    continue
+
+            child = board.copy(
+                stack=False
+            )
+
+            child.push(move)
+
+            child_key = self._position_key(
+                child
+            )
+
+            path[child_key] = (
+                path.get(child_key, 0) + 1
+            )
+
+            score = -self._quiescence(
+                child,
+                -beta,
+                -alpha,
+                ply + 1,
+                qdepth - 1,
+                path
+            )
+
+            path[child_key] -= 1
+
+            if path[child_key] == 0:
+                del path[child_key]
+
+            if score > best:
+                best = score
+
+            if score > alpha:
+                alpha = score
+
+            if alpha >= beta:
+                break
+
+        if best == -INF:
+            return self._static_eval(board)
+
+        return best
+
+    def _search(
+        self,
+        board,
+        depth,
+        alpha,
+        beta,
+        ply,
+        path
+    ):
+        self._nodes += 1
+
+        if self._nodes >= NODE_LIMIT:
+            self._stop = True
+            return self._static_eval(board)
+
+        terminal = self._terminal_score(
+            board,
+            ply
+        )
+
+        if terminal is not None:
+            return terminal
+
+        key = self._position_key(board)
+
+        if path.get(key, 0) >= 2:
+            return 0
+
+        alpha_original = alpha
+
+        tt_entry = self._tt.get(key)
+
+        tt_move = None
+
+        if tt_entry is not None:
+            tt_depth = tt_entry[0]
+            tt_score = tt_entry[1]
+            tt_flag = tt_entry[2]
+            tt_move = tt_entry[3]
+
+            if tt_depth >= depth:
+                if tt_flag == 0:
+                    return tt_score
+
+                if tt_flag == 1:
+                    alpha = max(
+                        alpha,
+                        tt_score
+                    )
+
+                elif tt_flag == 2:
+                    beta = min(
+                        beta,
+                        tt_score
+                    )
+
+                if alpha >= beta:
+                    return tt_score
+
+        if depth <= 0:
+            return self._quiescence(
+                board,
+                alpha,
+                beta,
+                ply,
+                QUIESCENCE_DEPTH,
+                path
+            )
+
+        moves = self._ordered_moves(
+            board,
+            tt_move=tt_move,
+            ply=ply
+        )
+
+        if not moves:
+            return self._static_eval(board)
+
+        best_score = -INF
+        best_move = moves[0]
+
+        for move_index, move in enumerate(moves):
+            if self._stop:
+                break
+
+            child = board.copy(
+                stack=False
+            )
+
+            child.push(move)
+
+            child_key = self._position_key(
+                child
+            )
+
+            path[child_key] = (
+                path.get(child_key, 0) + 1
+            )
+
+            gives_check = child.is_check()
+
+            extension = 1 if gives_check else 0
+
+            next_depth = depth - 1 + extension
+
+            if (
+                move_index >= 4
+                and depth >= 3
+                and self._is_quiet(board, move)
+                and not gives_check
+            ):
+                reduced_depth = max(
+                    1,
+                    next_depth - 1
+                )
+
+                score = -self._search(
+                    child,
+                    reduced_depth,
+                    -alpha - 1,
+                    -alpha,
+                    ply + 1,
+                    path
+                )
+
+                if (
+                    score > alpha
+                    and score < beta
+                ):
+                    score = -self._search(
+                        child,
+                        next_depth,
+                        -beta,
+                        -alpha,
+                        ply + 1,
+                        path
+                    )
+            else:
+                score = -self._search(
+                    child,
+                    next_depth,
+                    -beta,
+                    -alpha,
+                    ply + 1,
+                    path
+                )
+
+            path[child_key] -= 1
+
+            if path[child_key] == 0:
+                del path[child_key]
+
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+            if score > alpha:
+                alpha = score
+
+            if alpha >= beta:
+                if self._is_quiet(board, move):
+                    killers = self._killers.setdefault(
+                        ply,
+                        []
+                    )
+
+                    if move not in killers:
+                        killers.insert(
+                            0,
+                            move
+                        )
+
+                        if len(killers) > 2:
+                            del killers[2:]
+
+                    self._update_history(
+                        move,
+                        depth
+                    )
+
+                break
+
+        if self._stop:
+            return best_score
+
+        if best_score <= alpha_original:
+            flag = 2
+        elif best_score >= beta:
+            flag = 1
+        else:
+            flag = 0
+
+        self._tt[key] = (
+            depth,
+            best_score,
+            flag,
+            best_move
+        )
+
+        if len(self._tt) > TT_MAX_SIZE:
+            for _ in range(
+                max(1, TT_MAX_SIZE // 20)
+            ):
+                try:
+                    self._tt.pop(
+                        next(iter(self._tt))
+                    )
+                except StopIteration:
+                    break
+
+        return best_score
+
+    def _root_search(
+        self,
+        board,
+        depth,
+        alpha,
+        beta
+    ):
+        key = self._position_key(board)
+
+        tt_entry = self._tt.get(key)
+
+        tt_move = None
+
+        if tt_entry is not None:
+            tt_move = tt_entry[3]
+
+        moves = self._ordered_moves(
+            board,
+            tt_move=tt_move,
+            ply=0
+        )
+
+        if not moves:
+            return None, 0
+
+        best_move = moves[0]
+        best_score = -INF
+
+        path = {
+            key: 1
+        }
+
+        for move in moves:
+            if self._stop:
+                break
+
+            child = board.copy(
+                stack=False
+            )
+
+            child.push(move)
+
+            child_key = self._position_key(
+                child
+            )
+
+            path[child_key] = (
+                path.get(child_key, 0) + 1
+            )
+
+            gives_check = child.is_check()
+
+            extension = 1 if gives_check else 0
+
+            score = -self._search(
+                child,
+                depth - 1 + extension,
+                -beta,
+                -alpha,
+                1,
+                path
+            )
+
+            path[child_key] -= 1
+
+            if path[child_key] == 0:
+                del path[child_key]
+
+            if self._stop:
+                break
+
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+            if score > alpha:
+                alpha = score
+
+            if alpha >= beta:
+                break
+
+        self._tt[key] = (
+            depth,
+            best_score,
+            0,
+            best_move
+        )
+
+        return best_move, best_score
+
+    def _root_policy(self, board):
+        try:
+            black = board.turn == chess.BLACK
+
+            canon = (
+                board.mirror()
+                if black
+                else board
+            )
+
+            w_idx = self.extractor.get_halfkp_indices(
+                canon,
+                chess.WHITE
+            )
+
+            b_idx = self.extractor.get_halfkp_indices(
+                canon,
+                chess.BLACK
+            )
+
+            w_acc = (
+                self.model.backbone.refresh_accumulator(
+                    w_idx
                 )
             )
 
-        return values
+            b_acc = (
+                self.model.backbone.refresh_accumulator(
+                    b_idx
+                )
+            )
+
+            with torch.no_grad():
+                policy_probs, _ = self.model(
+                    w_acc,
+                    b_acc,
+                    board=[canon]
+                )
+
+            policy_probs = policy_probs[0]
+
+            self._root_policy = {}
+
+            for move in canon.legal_moves:
+                try:
+                    idx = self.extractor.move_to_idx(
+                        move
+                    )
+
+                    self._root_policy[
+                        move.uci()
+                    ] = float(
+                        policy_probs[idx].item()
+                    )
+
+                except Exception:
+                    continue
+
+        except Exception:
+            self._root_policy = {}
+
+    def _book_move(self, board):
+        try:
+            return self.book.pick(board)
+        except Exception:
+            return None
 
     def get_move(self, board):
-        self._value_cache.clear()
-
-        book_move = self.book.pick(
-            board
-        )
-
-        if book_move is not None:
-            return book_move
-
         if not self.loaded:
             if self._fallback is None:
                 self._fallback = StockfishEngine(
@@ -1419,9 +1087,33 @@ class CustomEngine:
                 board
             )
 
-        black = (
-            board.turn == chess.BLACK
+        book_move = self._book_move(board)
+
+        if book_move is not None:
+            return book_move
+
+        legal_moves = list(
+            board.legal_moves
         )
+
+        if not legal_moves:
+            return None
+
+        if len(legal_moves) == 1:
+            return legal_moves[0]
+
+        self._value_cache.clear()
+        self._tt.clear()
+        self._history.clear()
+        self._killers.clear()
+        self._root_policy.clear()
+
+        self._nodes = 0
+        self._stop = False
+
+        self._root_policy(board)
+
+        black = board.turn == chess.BLACK
 
         canon = (
             board.mirror()
@@ -1429,90 +1121,56 @@ class CustomEngine:
             else board
         )
 
-        w_idx = self.extractor.get_halfkp_indices(
-            canon,
-            chess.WHITE
+        best_move = next(
+            iter(canon.legal_moves)
         )
 
-        b_idx = self.extractor.get_halfkp_indices(
-            canon,
-            chess.BLACK
-        )
+        best_score = -INF
 
-        w_acc = (
-            self.model.backbone.refresh_accumulator(
-                w_idx
-            )
-        )
+        for depth in range(
+            1,
+            MAX_DEPTH + 1
+        ):
+            if self._stop:
+                break
 
-        b_acc = (
-            self.model.backbone.refresh_accumulator(
-                b_idx
-            )
-        )
+            self._stop = False
 
-        with torch.no_grad():
-            policy_probs, _ = self.model(
-                w_acc,
-                b_acc,
-                board=[canon]
+            alpha = -INF
+            beta = INF
+
+            move, score = self._root_search(
+                canon,
+                depth,
+                alpha,
+                beta
             )
 
-        policy_probs = policy_probs[0]
+            if self._stop:
+                break
 
-        candidates = self._candidate_moves(
-            canon,
-            policy_probs
-        )
-
-        scored = self._evaluate_candidates(
-            canon,
-            candidates,
-            policy_probs
-        )
-
-        if not scored:
-            move = next(
-                iter(
-                    canon.legal_moves
-                )
-            )
-        else:
-            scored.sort(
-                key=lambda item: item[0],
-                reverse=True
-            )
-
-            move = scored[0][2]
+            if move is not None:
+                best_move = move
+                best_score = score
 
         if black:
-            move = chess.Move(
+            best_move = chess.Move(
                 chess.square_mirror(
-                    move.from_square
+                    best_move.from_square
                 ),
                 chess.square_mirror(
-                    move.to_square
+                    best_move.to_square
                 ),
-                promotion=move.promotion
+                promotion=best_move.promotion
             )
 
-        if not board.is_legal(move):
-            q = chess.Move(
-                move.from_square,
-                move.to_square,
-                promotion=chess.QUEEN
-            )
+        if board.is_legal(best_move):
+            return best_move
 
-            if board.is_legal(q):
-                move = q
-            else:
-                move = next(
-                    iter(
-                        board.legal_moves
-                    )
-                )
+        for move in board.legal_moves:
+            return move
 
-        return move
+        return None
 
 
 _CUSTOM_CACHE = {}
