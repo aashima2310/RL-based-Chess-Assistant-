@@ -202,7 +202,6 @@ class CustomEngine:
 
             else:
                 bonus += 15.0
-.
             bonus += 3.0 * victim_value
 
 
