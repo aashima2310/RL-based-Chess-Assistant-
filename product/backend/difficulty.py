@@ -1,7 +1,7 @@
 DIFFICULTY_SIMULATIONS = {
-    "easy": 300,
-    "medium": 700,
-    "hard": 1600
+    "easy": 50,
+    "medium": 200,
+    "hard": 800
 }
 
 def get_simulations(difficulty):
