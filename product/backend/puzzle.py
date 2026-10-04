@@ -6,7 +6,7 @@ PUZZLE_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "lichess
 
 WEAKNESS_TO_THEME = {
     "hanging_piece":  "hangingPiece",
-    "king_safety":    "kingSafety",
+    "king_safety":    "exposedKing",
     "missed_tactic":  "fork",
     "pawn_structure": "pawnEndgame",
     "endgame_error":  "endgame",
@@ -80,6 +80,10 @@ def get_puzzles(weakness, user_elo, n=5, elo_range=150):
     if len(filtered) < n:
         filtered = df[df["Themes"].str.contains(theme, na=False, case=False)]
 
+    if len(filtered) == 0:
+        filtered = df[df["Rating"].between(user_elo - 300, user_elo + 300)]
+    if len(filtered) == 0:
+        filtered = df
     if len(filtered) == 0:
         return _mock_puzzles(weakness, user_elo, n)
 
