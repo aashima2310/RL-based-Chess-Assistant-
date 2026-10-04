@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r product/backend/requirements.txt
 COPY RL RL
 COPY product product
 
+# Download + trim the Lichess puzzle DB (~15 MB result). Build never fails if this step can't download.
+RUN pip install --no-cache-dir zstandard && python product/scripts/build_puzzles.py
+
 # Download model weights at build time (too big for GitHub). Edit YOUR_USERNAME.
 RUN mkdir -p product/backend/models && python -c "import urllib.request; urllib.request.urlretrieve('https://huggingface.co/akshay1-1/chessrl-model/resolve/main/value_clean_best_.pth', 'product/backend/models/value_clean_best.pt')"
 
