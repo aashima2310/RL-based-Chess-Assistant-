@@ -365,13 +365,19 @@ def call_llm(prompt: str, max_tokens: int = 300) -> str:
     if groq_client is None:
         return "GROQ_API_KEY is missing or invalid. Please check your deployment variables."
     try:
+        kwargs = {}
+        if MODEL.startswith("openai/gpt-oss"):
+            # reasoning model: keep thinking short and leave room for the answer
+            kwargs["extra_body"] = {"reasoning_effort": "low"}
+            max_tokens = max_tokens + 700
         resp = groq_client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=max_tokens,
+            **kwargs,
         )
-        return resp.choices[0].message.content.strip()
+        return (resp.choices[0].message.content or "").strip() or "Sorry, I couldn't generate a reply. Please try again."
     except Exception as e:
         print(f"[GROQ ERROR] {type(e).__name__}: {e}")
         return f"GROQ API Error: {e}"
