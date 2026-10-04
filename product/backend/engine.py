@@ -56,10 +56,14 @@ class CustomEngine:
 
         return best_move
 
+_CUSTOM_CACHE = {}
+
 class ChessEngine:
     def __init__(self, engine_type="stockfish", difficulty="easy", model_path=DEFAULT_MODEL_PATH):
         if str(engine_type).lower() == "custom":
-            self.engine = CustomEngine(model_path=model_path)
+            if model_path not in _CUSTOM_CACHE:
+                _CUSTOM_CACHE[model_path] = CustomEngine(model_path=model_path)
+            self.engine = _CUSTOM_CACHE[model_path]
         else:
             self.engine = StockfishEngine(difficulty=difficulty)
 
