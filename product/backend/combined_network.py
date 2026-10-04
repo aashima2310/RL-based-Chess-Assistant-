@@ -101,10 +101,49 @@ class NNUE_AlphaZero(nn.Module):
     def load_weights(self, path, device="cpu"):
         ckpt = torch.load(path, map_location=device)
         state_dict = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
+        self._adapt_to_state_dict(state_dict)
         missing, unexpected = self.load_state_dict(state_dict, strict=False)
         if missing: print("MISSING keys:", missing)
         if unexpected: print("UNEXPECTED keys:", unexpected)
+        self.to(device)   # layers rebuilt below are created on CPU
         return ckpt
+
+    def _adapt_to_state_dict(self, sd):
+        """Older checkpoints can have a different (smaller) policy/value head than the code defines.
+        Rebuild any head whose layer shapes don't match the checkpoint so the weights load correctly."""
+        cur = self.state_dict()
+        if "trunk.weight" in sd and sd["trunk.weight"].shape != cur["trunk.weight"].shape:
+            w = sd["trunk.weight"]
+            self.trunk = nn.Linear(w.shape[1], w.shape[0])
+            print("trunk rebuilt to match checkpoint:", tuple(w.shape))
+        for head, tail in (("policy_head", None), ("value_head", nn.Tanh)):
+            prefix = head + "."
+            same = all(k in sd and sd[k].shape == v.shape for k, v in cur.items() if k.startswith(prefix)) \
+                   and not any(k.startswith(prefix) and k not in cur for k in sd)
+            if same:
+                continue
+            layers = {}
+            for k, v in sd.items():
+                if k.startswith(prefix):
+                    i, name = k[len(prefix):].split(".", 1)
+                    layers.setdefault(int(i), {})[name] = v
+            if not layers:
+                continue
+            mods = []
+            for i in range(max(layers) + 1):
+                p = layers.get(i)
+                if p is None:
+                    mods.append(nn.ReLU())
+                elif p["weight"].ndim == 2:
+                    mods.append(nn.Linear(p["weight"].shape[1], p["weight"].shape[0]))
+                elif "running_mean" in p:
+                    mods.append(nn.BatchNorm1d(p["weight"].shape[0]))
+                else:
+                    mods.append(nn.LayerNorm(p["weight"].shape[0]))
+            if tail is not None:
+                mods.append(tail())
+            setattr(self, head, nn.Sequential(*mods))
+            print(f"{head} in checkpoint differs from code -> rebuilt as:\n{getattr(self, head)}")
 
 
 def alphazero_loss(policy_preds, value_preds, policy_targets, value_targets, model=None, l2_lambda=1e-4):
